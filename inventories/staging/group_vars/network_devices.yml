@@ -1,0 +1,42 @@
+---
+# Connection settings cho FRRouting containers
+ansible_user: root
+ansible_ssh_pass: "{{ lookup('env', 'NETWORK_SSH_PASS') | default('frr123', true) }}"
+ansible_connection: ssh
+ansible_ssh_common_args: >-
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o ProxyJump=root@103.110.85.105
+
+# Bank VLAN definitions
+bank_vlans:
+  - id: 10
+    name: MGMT
+    description: "Management Network"
+    subnet: "192.168.10.0/24"
+    gateway: "192.168.10.1"
+  - id: 20
+    name: INTERNAL
+    description: "Internal Banking Systems"
+    subnet: "192.168.20.0/24"
+    gateway: "192.168.20.1"
+  - id: 30
+    name: DMZ
+    description: "DMZ - Internet Facing"
+    subnet: "192.168.30.0/24"
+    gateway: "192.168.30.1"
+  - id: 99
+    name: BLACKHOLE
+    description: "Unused ports blackhole"
+    subnet: ""
+    gateway: ""
+
+# NTP servers (bank standard)
+ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+
+# DNS
+dns_servers:
+  - 8.8.8.8
+  - 1.1.1.1

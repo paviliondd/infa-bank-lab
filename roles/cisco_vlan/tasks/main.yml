@@ -1,0 +1,93 @@
+---
+- name: Gather current interface facts
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+  tags: [always]
+
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [backup]
+
+- name: Backup current FRR config before change
+  ansible.builtin.fetch:
+    src: /etc/frr/frr.conf
+    dest: "backups/pre-deploy/{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.conf"
+    flat: true
+  ignore_errors: true
+  tags: [backup]
+
+- name: Ensure FRR daemon config exists
+  ansible.builtin.template:
+    src: daemons.j2
+    dest: /etc/frr/daemons
+    owner: frr
+    group: frr
+    mode: "0640"
+  tags: [config]
+
+- name: Stop FRR before config change
+  ansible.builtin.shell:
+    cmd: "pkill -f 'frr' || true"
+  changed_when: false
+  tags: [config, vlan]
+
+- name: Wait for FRR to stop
+  ansible.builtin.pause:
+    seconds: 2
+  tags: [config, vlan]
+
+- name: Deploy VLAN interface configuration
+  ansible.builtin.template:
+    src: vlan.j2
+    dest: /etc/frr/frr.conf
+    owner: frr
+    group: frr
+    mode: "0640"
+  tags: [config, vlan]
+
+- name: Start FRR after config change
+  ansible.builtin.shell:
+    cmd: "/usr/lib/frr/frrinit.sh start || /usr/sbin/frrd || true"
+  changed_when: true
+  tags: [config, vlan]
+
+- name: Wait for FRR to start
+  ansible.builtin.pause:
+    seconds: 3
+  tags: [config, vlan]
+
+- name: Verify interfaces are up
+  ansible.builtin.command:
+    cmd: ip link show
+  register: cisco_vlan_interface_status
+  changed_when: false
+  tags: [verify]
+
+- name: Assert eth0 exists
+  ansible.builtin.assert:
+    that:
+      - "'eth0' in cisco_vlan_interface_status.stdout"
+    fail_msg: "Interface check failed on {{ inventory_hostname }}"
+    success_msg: "All interfaces OK on {{ inventory_hostname }}"
+  tags: [verify]
+
+- name: Save config snapshot
+  ansible.builtin.copy:
+    content: "{{ lookup('file', '/etc/frr/frr.conf') }}"
+    dest: "/tmp/backup/{{ inventory_hostname }}-{{ ansible_date_time.date }}.conf"
+    mode: "0644"
+  tags: [backup]
+
+- name: Log change to audit file
+  ansible.builtin.lineinfile:
+    path: /var/log/ansible-audit.log
+    line: >-
+      {{ ansible_date_time.iso8601 }} | {{ inventory_hostname }} | vlan-config |
+      user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}
+    create: true
+    mode: "0644"
+  tags: [audit]

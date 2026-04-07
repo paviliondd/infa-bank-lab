@@ -1,0 +1,48 @@
+---
+- name: Rollback VLAN config to previous version
+  hosts: network_devices
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Validate rollback_epoch is provided
+      ansible.builtin.fail:
+        msg: "Provide -e 'rollback_epoch=TIMESTAMP'"
+      when: rollback_epoch is not defined
+
+    - name: Find backup file
+      ansible.builtin.stat:
+        path: "backups/pre-deploy/{{ inventory_hostname }}-{{ rollback_epoch }}.conf"
+      register: backup_file
+      delegate_to: localhost
+
+    - name: Fail if backup not found
+      ansible.builtin.fail:
+        msg: "Backup not found: backups/pre-deploy/{{ inventory_hostname }}-{{ rollback_epoch }}.conf"
+      when: not backup_file.stat.exists
+
+    - name: Stop FRR before rollback
+      ansible.builtin.shell:
+        cmd: "pkill -f frr || true"
+      changed_when: false
+
+    - name: Copy backup config to device
+      ansible.builtin.copy:
+        src: "backups/pre-deploy/{{ inventory_hostname }}-{{ rollback_epoch }}.conf"
+        dest: /etc/frr/frr.conf
+        owner: frr
+        group: frr
+        mode: "0640"
+
+    - name: Start FRR after rollback
+      ansible.builtin.shell:
+        cmd: "/usr/lib/frr/frrinit.sh start || true"
+      changed_when: true
+
+    - name: Log rollback action
+      ansible.builtin.lineinfile:
+        path: /var/log/ansible-audit.log
+        line: >-
+          {{ ansible_date_time.iso8601 }} | {{ inventory_hostname }} | ROLLBACK |
+          epoch={{ rollback_epoch }} | user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}
+        create: true
+        mode: "0644"

@@ -1,0 +1,24 @@
+---
+all:
+  children:
+    network_devices:
+      children:
+        switches:
+          hosts:
+            sw1:
+              ansible_host: 172.20.20.11
+            sw2:
+              ansible_host: 172.20.20.12
+        routers:
+          hosts:
+            router1:
+              ansible_host: 172.20.20.13
+
+    linux_servers:
+      hosts:
+        k8s-master:
+          ansible_host: 10.x.x.3   # thay IP thật VPS 3
+        k8s-worker1:
+          ansible_host: 10.x.x.4   # thay IP thật VPS 4
+        k8s-worker2:
+          ansible_host: 10.x.x.5   # thay IP thật VPS 5

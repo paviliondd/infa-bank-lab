@@ -1,0 +1,113 @@
+---
+- name: Pre-flight checks
+  hosts: linux_servers
+  gather_facts: false
+  tags: [preflight]
+  tasks:
+    - name: Check server reachability
+      ansible.builtin.wait_for_connection:
+        timeout: 10
+      register: reachability
+      ignore_errors: true
+
+    - name: Fail if server unreachable
+      ansible.builtin.fail:
+        msg: "Server {{ inventory_hostname }} ({{ ansible_host }}) unreachable"
+      when: reachability is failed
+
+    - name: Pre-flight summary
+      ansible.builtin.debug:
+        msg: "OK {{ inventory_hostname }} ({{ server_role }}) reachable"
+
+- name: Apply firewall rules to DMZ servers
+  hosts: dmz
+  gather_facts: true
+  serial: 1
+  tags: [firewall, dmz]
+  vars:
+    bank_firewall_rules:
+      - name: allow-ssh-mgmt
+        protocol: tcp
+        port: 22
+        source: "103.110.85.93/32"
+        action: ACCEPT
+        comment: "SSH from GitLab VPS1"
+      - name: allow-ssh-netlab
+        protocol: tcp
+        port: 22
+        source: "103.110.85.105/32"
+        action: ACCEPT
+        comment: "SSH from NetLab VPS6"
+      - name: allow-http
+        protocol: tcp
+        port: 80
+        source: "0.0.0.0/0"
+        action: ACCEPT
+        comment: "HTTP public"
+      - name: allow-https
+        protocol: tcp
+        port: 443
+        source: "0.0.0.0/0"
+        action: ACCEPT
+        comment: "HTTPS public"
+      - name: allow-established
+        protocol: all
+        source: "0.0.0.0/0"
+        extra_args: "-m state --state ESTABLISHED,RELATED"
+        action: ACCEPT
+        comment: "Allow established"
+  roles:
+    - role: bank_firewall
+      tags: [firewall]
+
+- name: Apply firewall rules to Internal servers
+  hosts: internal
+  gather_facts: true
+  serial: 1
+  tags: [firewall, internal]
+  vars:
+    bank_firewall_rules:
+      - name: allow-ssh-mgmt
+        protocol: tcp
+        port: 22
+        source: "103.110.85.93/32"
+        action: ACCEPT
+        comment: "SSH from GitLab VPS1"
+      - name: allow-ssh-netlab
+        protocol: tcp
+        port: 22
+        source: "103.110.85.105/32"
+        action: ACCEPT
+        comment: "SSH from NetLab VPS6"
+      - name: allow-internal-subnet
+        protocol: all
+        source: "116.118.48.0/23"
+        action: ACCEPT
+        comment: "Allow internal subnet"
+      - name: allow-internal-vps5
+        protocol: all
+        source: "103.110.85.124/32"
+        action: ACCEPT
+        comment: "Allow VPS5"
+      - name: allow-established
+        protocol: all
+        source: "0.0.0.0/0"
+        extra_args: "-m state --state ESTABLISHED,RELATED"
+        action: ACCEPT
+        comment: "Allow established"
+  roles:
+    - role: bank_firewall
+      tags: [firewall]
+
+- name: Post-deployment summary
+  hosts: linux_servers
+  gather_facts: false
+  tags: [summary]
+  tasks:
+    - name: Final summary
+      ansible.builtin.debug:
+        msg: >-
+          Lab 1.2 complete — {{ inventory_hostname }}
+          firewall rules applied successfully.
+          Pipeline {{ lookup('env', 'CI_PIPELINE_ID') | default('local') }}
+      run_once: false

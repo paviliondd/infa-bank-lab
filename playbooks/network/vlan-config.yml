@@ -1,0 +1,56 @@
+---
+- name: Pre-flight checks
+  hosts: network_devices
+  gather_facts: false
+  tags: [preflight]
+  tasks:
+    - name: Check device reachability
+      ansible.builtin.wait_for_connection:
+        timeout: 10
+      register: reachability
+      ignore_errors: true
+
+    - name: Fail if device unreachable
+      ansible.builtin.fail:
+        msg: "Device {{ inventory_hostname }} ({{ ansible_host }}) unreachable"
+      when: reachability is failed
+
+    - name: Pre-flight summary
+      ansible.builtin.debug:
+        msg: "OK {{ inventory_hostname }} reachable"
+
+- name: Apply VLAN configuration to switches
+  hosts: switches
+  gather_facts: true
+  serial: 1
+  max_fail_percentage: 0
+  tags: [vlan, switches]
+  roles:
+    - role: cisco_vlan
+      tags: [vlan]
+  post_tasks:
+    - name: Post-deploy verification
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} deployed successfully.
+          Pipeline {{ lookup('env', 'CI_PIPELINE_ID') | default('local') }}
+          Commit {{ lookup('env', 'CI_COMMIT_SHORT_SHA') | default('local') }}
+      tags: [verify]
+
+- name: Apply VLAN configuration to routers
+  hosts: routers
+  gather_facts: true
+  tags: [vlan, routers]
+  roles:
+    - role: cisco_vlan
+      tags: [vlan]
+
+- name: Post-deployment summary
+  hosts: network_devices
+  gather_facts: false
+  tags: [summary]
+  tasks:
+    - name: Final summary
+      ansible.builtin.debug:
+        msg: "Lab 1.1 complete - {{ groups['network_devices'] | length }} devices configured"
+      run_once: true

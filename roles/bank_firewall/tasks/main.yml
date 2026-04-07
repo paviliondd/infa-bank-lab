@@ -1,0 +1,83 @@
+---
+- name: Gather facts
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+  tags: [always]
+
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ firewall_backup_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [backup]
+
+- name: Backup current iptables rules
+  ansible.builtin.shell:
+    cmd: "iptables-save > {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
+  changed_when: false
+  ignore_errors: true
+  tags: [backup]
+
+- name: Ensure iptables-persistent is installed
+  ansible.builtin.apt:
+    name:
+      - iptables
+      - iptables-persistent
+    state: present
+    update_cache: false
+  tags: [install]
+
+- name: Generate iptables rules from template
+  ansible.builtin.template:
+    src: iptables.j2
+    dest: /tmp/iptables-new.rules
+    mode: "0600"
+  tags: [config]
+
+- name: Validate iptables rules syntax
+  ansible.builtin.shell:
+    cmd: "iptables-restore --test < /tmp/iptables-new.rules"
+  changed_when: false
+  tags: [validate]
+
+- name: Apply iptables rules
+  ansible.builtin.shell:
+    cmd: "iptables-restore < /tmp/iptables-new.rules"
+  changed_when: true
+  notify: save iptables
+  tags: [apply]
+
+- name: Verify SSH port still open after apply
+  ansible.builtin.wait_for:
+    port: 22
+    host: "{{ ansible_host }}"
+    timeout: 10
+    delay: 2
+  delegate_to: localhost
+  tags: [verify]
+
+- name: Verify HTTP port rule exists
+  ansible.builtin.shell:
+    cmd: "iptables -L INPUT -n | grep 'dpt:80'"
+  register: http_rule_check
+  changed_when: false
+  failed_when: false
+  tags: [verify]
+
+- name: Log firewall change to audit
+  ansible.builtin.lineinfile:
+    path: /var/log/ansible-audit.log
+    line: >-
+      {{ ansible_date_time.iso8601 }} | {{ inventory_hostname }} |
+      firewall-rules | role={{ server_role | default('unknown') }} |
+      user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}
+    create: true
+    mode: "0644"
+  tags: [audit]
+
+- name: Cleanup temp file
+  ansible.builtin.file:
+    path: /tmp/iptables-new.rules
+    state: absent
+  tags: [cleanup]

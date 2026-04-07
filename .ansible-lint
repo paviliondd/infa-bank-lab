@@ -1,0 +1,14 @@
+---
+profile: min
+exclude_paths:
+  - collections/
+  - .cache/
+skip_list:
+  - meta-no-info
+  - jinja[spacing]
+  - var-naming[no-role-prefix]
+  - name[casing]
+  - command-instead-of-shell
+  - no-changed-when
+warn_list:
+  - yaml[line-length]

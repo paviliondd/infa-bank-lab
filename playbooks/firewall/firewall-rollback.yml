@@ -1,0 +1,43 @@
+---
+- name: Rollback firewall rules to previous backup
+  hosts: linux_servers
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Validate rollback_epoch is provided
+      ansible.builtin.fail:
+        msg: "Provide -e 'rollback_epoch=TIMESTAMP'"
+      when: rollback_epoch is not defined
+
+    - name: Find backup file
+      ansible.builtin.stat:
+        path: "{{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ rollback_epoch }}.bak"
+      register: backup_file
+
+    - name: Fail if backup not found
+      ansible.builtin.fail:
+        msg: "Backup not found: {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ rollback_epoch }}.bak"
+      when: not backup_file.stat.exists
+
+    - name: Restore iptables from backup
+      ansible.builtin.shell:
+        cmd: "iptables-restore < {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ rollback_epoch }}.bak"
+      changed_when: true
+
+    - name: Verify SSH still accessible after rollback
+      ansible.builtin.wait_for:
+        port: 22
+        host: "{{ ansible_host }}"
+        timeout: 10
+        delay: 2
+      delegate_to: localhost
+
+    - name: Log rollback to audit
+      ansible.builtin.lineinfile:
+        path: /var/log/ansible-audit.log
+        line: >-
+          {{ ansible_date_time.iso8601 }} | {{ inventory_hostname }} |
+          FIREWALL-ROLLBACK | epoch={{ rollback_epoch }} |
+          user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}
+        create: true
+        mode: "0644"

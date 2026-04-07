@@ -1,0 +1,6 @@
+---
+bank_firewall_rules: []
+bank_zones: {}
+firewall_backup_dir: /tmp/firewall-backup
+firewall_default_policy: DROP
+firewall_allowed_icmp: true

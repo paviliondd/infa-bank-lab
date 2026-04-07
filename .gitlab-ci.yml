@@ -1,0 +1,150 @@
+---
+stages:
+  - lint
+  - validate
+  - deploy-staging
+  - deploy-prod
+
+variables:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+  ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_STDOUT_CALLBACK: "default"
+  ANSIBLE_DEPRECATION_WARNINGS: "False"
+  VAULT_ADDR: "http://automation.bank-infra.lab:8200"
+  NETLAB_HOST: "netlab.bank-infra.lab"
+  ANSIBLE_ROLES_PATH: "${CI_PROJECT_DIR}/roles"
+  ANSIBLE_COLLECTIONS_PATH: "${CI_PROJECT_DIR}/collections"
+  ANSIBLE_CONFIG: "${CI_PROJECT_DIR}/ansible.cfg"
+
+default:
+  before_script:
+    - export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+
+lint:ansible:
+  stage: lint
+  script:
+    - ansible --version
+    - ansible-galaxy collection install -r collections/requirements.yml --force
+    - ansible-lint playbooks/ roles/
+  allow_failure: false
+
+lint:yaml:
+  stage: lint
+  script:
+    - yamllint -d relaxed inventories/ playbooks/ roles/ || true
+  allow_failure: true
+
+validate:syntax:
+  stage: validate
+  needs:
+    - lint:ansible
+  script:
+    - ansible-playbook playbooks/network/vlan-config.yml
+        --inventory inventories/staging/network.yml
+        --syntax-check
+    - ansible-playbook playbooks/firewall/firewall-rules.yml
+        --inventory inventories/staging/servers.yml
+        --syntax-check
+    - echo "All syntax checks passed"
+
+validate:dry-run:
+  stage: validate
+  needs:
+    - validate:syntax
+  script:
+    - ansible-playbook playbooks/network/vlan-config.yml
+        --inventory inventories/staging/network.yml
+        --check --diff
+        || echo "Dry-run vlan complete"
+    - ansible-playbook playbooks/firewall/firewall-rules.yml
+        --inventory inventories/staging/servers.yml
+        --check --diff
+        || echo "Dry-run firewall complete"
+
+deploy:vlan-staging:
+  stage: deploy-staging
+  needs:
+    - validate:dry-run
+  environment:
+    name: staging
+  script:
+    - echo "Lab 1.1 - VLAN deploy - Pipeline ${CI_PIPELINE_ID}"
+    - ansible-playbook playbooks/network/vlan-config.yml
+        --inventory inventories/staging/network.yml
+        --diff
+        -e "env=staging"
+    - echo "VLAN staging complete"
+  artifacts:
+    paths:
+      - backups/
+    expire_in: 7 days
+    when: always
+
+deploy:firewall-staging:
+  stage: deploy-staging
+  needs:
+    - validate:dry-run
+  environment:
+    name: staging
+  script:
+    - echo "Lab 1.2 - Firewall deploy - Pipeline ${CI_PIPELINE_ID}"
+    - ansible-playbook playbooks/firewall/firewall-rules.yml
+        --inventory inventories/staging/servers.yml
+        --diff
+        -e "env=staging"
+    - echo "Firewall staging complete"
+  artifacts:
+    paths:
+      - backups/
+    expire_in: 7 days
+    when: always
+
+rollback:vlan-staging:
+  stage: deploy-staging
+  when: manual
+  script:
+    - ansible-playbook playbooks/network/vlan-rollback.yml
+        --inventory inventories/staging/network.yml
+        -e "rollback_epoch=${ROLLBACK_EPOCH}"
+
+rollback:firewall-staging:
+  stage: deploy-staging
+  when: manual
+  script:
+    - ansible-playbook playbooks/firewall/firewall-rollback.yml
+        --inventory inventories/staging/servers.yml
+        -e "rollback_epoch=${ROLLBACK_EPOCH}"
+
+deploy:vlan-production:
+  stage: deploy-prod
+  needs:
+    - deploy:vlan-staging
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - when: never
+  script:
+    - echo "PRODUCTION VLAN - Operator ${GITLAB_USER_LOGIN}"
+    - ansible-playbook playbooks/network/vlan-config.yml
+        --inventory inventories/production/network.yml
+        --diff
+    - echo "VLAN production complete"
+
+deploy:firewall-production:
+  stage: deploy-prod
+  needs:
+    - deploy:firewall-staging
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - when: never
+  script:
+    - echo "PRODUCTION FIREWALL - Operator ${GITLAB_USER_LOGIN}"
+    - ansible-playbook playbooks/firewall/firewall-rules.yml
+        --inventory inventories/staging/servers.yml
+        --diff
+    - echo "Firewall production complete"

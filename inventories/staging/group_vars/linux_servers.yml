@@ -1,0 +1,70 @@
+---
+ansible_user: root
+ansible_ssh_private_key_file: /home/gitlab-runner/.ssh/id_ed25519
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+# Bank firewall zones
+bank_zones:
+  mgmt:
+    subnets:
+      - "103.110.85.93/32"   # VPS 1 gitlab
+      - "103.110.85.105/32"  # VPS 6 netlab
+  internal:
+    subnets:
+      - "116.118.51.79/32"   # VPS 4
+      - "103.110.85.124/32"  # VPS 5
+  dmz:
+    subnets:
+      - "116.118.50.73/32"   # VPS 3
+
+# Bank firewall rules
+bank_firewall_rules:
+  # Allow SSH from MGMT zone only
+  - name: allow-ssh-from-mgmt
+    protocol: tcp
+    port: 22
+    source: "103.110.85.93/32"
+    action: ACCEPT
+    comment: "Allow SSH from GitLab VPS1"
+
+  - name: allow-ssh-from-netlab
+    protocol: tcp
+    port: 22
+    source: "103.110.85.105/32"
+    action: ACCEPT
+    comment: "Allow SSH from NetLab VPS6"
+
+  # Allow HTTP/HTTPS
+  - name: allow-http
+    protocol: tcp
+    port: 80
+    source: "0.0.0.0/0"
+    action: ACCEPT
+    comment: "Allow HTTP"
+
+  - name: allow-https
+    protocol: tcp
+    port: 443
+    source: "0.0.0.0/0"
+    action: ACCEPT
+    comment: "Allow HTTPS"
+
+  # Allow internal communication
+  - name: allow-internal-all
+    protocol: all
+    port: ""
+    source: "116.118.48.0/23"
+    action: ACCEPT
+    comment: "Allow internal network"
+
+  # Allow established connections
+  - name: allow-established
+    protocol: all
+    port: ""
+    source: "0.0.0.0/0"
+    action: ACCEPT
+    extra_args: "-m state --state ESTABLISHED,RELATED"
+    comment: "Allow established connections"
+
+# Backup
+firewall_backup_dir: /tmp/firewall-backup

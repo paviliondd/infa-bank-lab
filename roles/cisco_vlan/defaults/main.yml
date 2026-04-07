@@ -1,0 +1,10 @@
+---
+backup_dir: /tmp/backup
+audit_log: /var/log/ansible-audit.log
+bank_vlans: []
+ntp_servers:
+  - 0.pool.ntp.org
+dns_servers:
+  - 8.8.8.8
+rollback_enabled: false
+rollback_config_path: ""

@@ -1,0 +1,18 @@
+---
+all:
+  children:
+    linux_servers:
+      children:
+        dmz:
+          hosts:
+            vps3:
+              ansible_host: 116.118.50.73
+              server_role: dmz
+        internal:
+          hosts:
+            vps4:
+              ansible_host: 116.118.51.79
+              server_role: internal
+            vps5:
+              ansible_host: 103.110.85.124
+              server_role: internal

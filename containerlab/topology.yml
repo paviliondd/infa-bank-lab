@@ -1,0 +1,39 @@
+name: bank-network-lab
+
+mgmt:
+  network: mgmt-net
+  ipv4-subnet: 172.20.20.0/24
+
+topology:
+  nodes:
+    sw1:
+      kind: linux
+      image: frrouting/frr:latest
+      mgmt-ipv4: 172.20.20.11
+      binds:
+        - startup-configs/sw1.cfg:/etc/frr/frr.conf
+      env:
+        TINI_SUBREAPER: 1
+
+    sw2:
+      kind: linux
+      image: frrouting/frr:latest
+      mgmt-ipv4: 172.20.20.12
+      binds:
+        - startup-configs/sw2.cfg:/etc/frr/frr.conf
+      env:
+        TINI_SUBREAPER: 1
+
+    router1:
+      kind: linux
+      image: frrouting/frr:latest
+      mgmt-ipv4: 172.20.20.13
+      binds:
+        - startup-configs/router1.cfg:/etc/frr/frr.conf
+      env:
+        TINI_SUBREAPER: 1
+
+  links:
+    - endpoints: ["sw1:eth1", "sw2:eth1"]
+    - endpoints: ["sw1:eth2", "router1:eth1"]
+    - endpoints: ["sw2:eth2", "router1:eth2"]

@@ -1,0 +1,12 @@
+---
+collections:
+  - name: community.general
+    version: ">=7.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"
+  # Cisco IOS — dùng khi có Cisco thật hoặc EVE-NG
+  # - name: cisco.ios
+  #   version: ">=4.6.0"
+  # Fortinet — Lab 1.2
+  # - name: fortinet.fortios
+  #   version: ">=2.3.0"
