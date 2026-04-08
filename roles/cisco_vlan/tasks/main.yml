@@ -29,16 +29,30 @@
     mode: "0640"
   tags: [config]
 
-- name: Copy VLAN interface config
+- name: Write new FRR config to temp location
   template:
     src: vlan.j2
-    dest: /etc/frr/frr.conf
-    owner: frr
-    group: frr
+    dest: /tmp/frr-new.conf
     mode: '0640'
-    backup: yes
-  notify: Reload frr
   tags: [config]
+
+- name: Apply FRR config via frr-reload (no file lock issue)
+  shell: |
+    if [ -f /usr/lib/frr/frr-reload.py ]; then
+      python3 /usr/lib/frr/frr-reload.py --reload /tmp/frr-new.conf
+    else
+      cp /tmp/frr-new.conf /etc/frr/frr.conf
+      vtysh -c "write memory"
+    fi
+  register: frr_reload_result
+  changed_when: "'No changes' not in frr_reload_result.stdout"
+  tags: [config]
+
+- name: Show reload result
+  debug:
+    msg: "{{ frr_reload_result.stdout_lines }}"
+  tags: [config]
+
 
 - name: Verify FRR config syntax before reload
   command: >
