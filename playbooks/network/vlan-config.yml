@@ -1,16 +1,16 @@
 ---
-pre_tasks:
-  - name: Ensure backup directory exists
-    file:
-      path: "{{ playbook_dir }}/../../backups"
-      state: directory
-      mode: '0755'
-    delegate_to: localhost
-    run_once: true
 - name: Pre-flight checks
   hosts: network_devices
   gather_facts: false
   tags: [preflight]
+  pre_tasks:
+    - name: Ensure backup directory exists
+      file:
+        path: "{{ playbook_dir }}/../../backups"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
   tasks:
     - name: Check device reachability
       ansible.builtin.wait_for_connection:
