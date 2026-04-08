@@ -68,6 +68,7 @@ deploy:vlan-staging:
   environment:
     name: staging
   script:
+    - mkdir -p backups 
     - echo "Lab 1.1 - VLAN deploy - Pipeline ${CI_PIPELINE_ID}"
     - ansible-playbook playbooks/network/vlan-config.yml
         --inventory inventories/staging/network.yml
