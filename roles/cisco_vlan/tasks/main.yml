@@ -85,11 +85,18 @@
     success_msg: "All interfaces OK on {{ inventory_hostname }}"
   tags: [verify]
 
+- name: Read FRR config from remote host
+  ansible.builtin.slurp:
+    src: /etc/frr/frr.conf
+  register: frr_conf_slurp
+  ignore_errors: true
+  tags: [backup]
 - name: Save config snapshot
   ansible.builtin.copy:
-    content: "{{ lookup('file', '/etc/frr/frr.conf') }}"
+    content: "{{ frr_conf_slurp.content | b64decode }}"
     dest: "/tmp/backup/{{ inventory_hostname }}-{{ ansible_date_time.date }}.conf"
     mode: "0644"
+  when: frr_conf_slurp is not failed
   tags: [backup]
 
 - name: Log change to audit file
