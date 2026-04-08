@@ -29,31 +29,29 @@
     mode: "0640"
   tags: [config]
 
-- name: Stop FRR before config change
-  ansible.builtin.shell:
-    cmd: "pkill -f 'frr' || true"
-  changed_when: false
-  tags: [config, vlan]
-
-- name: Wait for FRR to stop
-  ansible.builtin.pause:
-    seconds: 2
-  tags: [config, vlan]
-
-- name: Deploy VLAN interface configuration
-  ansible.builtin.template:
+- name: Copy VLAN interface config
+  template:
     src: vlan.j2
     dest: /etc/frr/frr.conf
     owner: frr
     group: frr
-    mode: "0640"
-  tags: [config, vlan]
+    mode: '0640'
+    backup: yes
+  notify: Reload frr
+  tags: [config]
 
-- name: Start FRR after config change
-  ansible.builtin.shell:
-    cmd: "/usr/lib/frr/frrinit.sh start || /usr/sbin/frrd || true"
-  changed_when: true
-  tags: [config, vlan]
+- name: Verify FRR config syntax before reload
+  command: >
+    vtysh -C -f /etc/frr/frr.conf
+  changed_when: false
+  tags: [validate]
+
+- name: Force reload FRR if config changed
+  command: /usr/lib/frr/frr-reload.py --reload /etc/frr/frr.conf
+  when: ansible_check_mode is not defined or not ansible_check_mode
+  ignore_errors: true
+  tags: [config]
+
 
 - name: Wait for FRR to start
   ansible.builtin.pause:
