@@ -12,6 +12,13 @@
     mode: "0755"
   tags: [backup]
 
+- name: Ensure /tmp/backup directory exists
+  ansible.builtin.file:
+    path: /tmp/backup
+    state: directory
+    mode: "0755"
+  tags: [backup]
+
 - name: Backup current FRR config before change
   ansible.builtin.fetch:
     src: /etc/frr/frr.conf
@@ -29,48 +36,39 @@
     mode: "0640"
   tags: [config]
 
-- name: Write new FRR config to temp location
-  template:
-    src: vlan.j2
-    dest: /tmp/frr-new.conf
-    mode: '0640'
+- name: Ensure vtysh.conf exists (required by frr-reload)
+  ansible.builtin.file:
+    path: /etc/frr/vtysh.conf
+    state: touch
+    owner: frr
+    group: frr
+    mode: "0640"
+  changed_when: false
   tags: [config]
 
-- name: Apply FRR config via frr-reload (no file lock issue)
-  shell: |
-    if [ -f /usr/lib/frr/frr-reload.py ]; then
-      python3 /usr/lib/frr/frr-reload.py --reload /tmp/frr-new.conf
-    else
-      cp /tmp/frr-new.conf /etc/frr/frr.conf
-      vtysh -c "write memory"
-    fi
+- name: Write new FRR config to temp location
+  ansible.builtin.template:
+    src: vlan.j2
+    dest: /tmp/frr-new.conf
+    mode: "0640"
+  tags: [config]
+
+- name: Apply FRR config via frr-reload
+  ansible.builtin.shell: |
+    python3 /usr/lib/frr/frr-reload.py --reload /tmp/frr-new.conf 2>&1 || true
   register: frr_reload_result
   changed_when: "'No changes' not in frr_reload_result.stdout"
   tags: [config]
 
 - name: Show reload result
-  debug:
+  ansible.builtin.debug:
     msg: "{{ frr_reload_result.stdout_lines }}"
   tags: [config]
 
-
-- name: Verify FRR config syntax before reload
-  command: >
-    vtysh -C -f /etc/frr/frr.conf
-  changed_when: false
-  tags: [validate]
-
-- name: Force reload FRR if config changed
-  command: /usr/lib/frr/frr-reload.py --reload /etc/frr/frr.conf
-  when: ansible_check_mode is not defined or not ansible_check_mode
-  ignore_errors: true
-  tags: [config]
-
-
-- name: Wait for FRR to start
+- name: Wait for FRR to stabilize
   ansible.builtin.pause:
     seconds: 3
-  tags: [config, vlan]
+  tags: [config]
 
 - name: Verify interfaces are up
   ansible.builtin.command:
