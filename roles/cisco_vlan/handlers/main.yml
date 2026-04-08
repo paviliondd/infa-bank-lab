@@ -1,12 +1,11 @@
 ---
-- name: Restart frr
-  ansible.builtin.shell:
-    cmd: "pkill -f frr || true && sleep 2 && /usr/lib/frr/frrinit.sh start || true"
-  changed_when: true
-  listen: restart frr
-
 - name: Reload frr
-  ansible.builtin.shell:
-    cmd: "/usr/lib/frr/frr-reload.py /etc/frr/frr.conf || true"
-  changed_when: true
-  listen: reload frr
+  command: >
+    vtysh -c "configure terminal" -c "end" -c "write memory"
+  become: true
+  listen: "Reload frr"
+- name: Restart frr
+  command: >
+    vtysh -c "configure terminal" -c "end" -c "write memory"
+  become: true
+  listen: "Restart frr"
