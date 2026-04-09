@@ -70,7 +70,7 @@ deploy:jenkins:
   when: manual
   script:
     - echo "Deploying Jenkins CI Server on VPS 1"
-    - ansible-playbook playbooks/ci/jenkins-setup.yml
+    - ansible-playbook playbooks/ci/jenkins-setup.yml -i '103.110.85.93,' -u root
     - echo "Jenkins deployed successfully"
 
 # ─────────────── DEPLOY STAGING ───────────────
