@@ -1,6 +1,7 @@
 ---
 - name: Setup Jenkins server
-  hosts: all
-  become: false
+  hosts: localhost
+  connection: local
+  gather_facts: false
   roles:
     - jenkins_setup
