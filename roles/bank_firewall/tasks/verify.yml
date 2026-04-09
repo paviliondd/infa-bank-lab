@@ -1,0 +1,53 @@
+---
+# ──────────────────────────────────────────────
+# Verify SSH + auto-rollback if lost
+# ──────────────────────────────────────────────
+- name: Verify SSH still accessible after apply
+  ansible.builtin.wait_for:
+    port: 22
+    host: "{{ ansible_host }}"
+    timeout: "{{ firewall_test_timeout }}"
+    delay: 2
+  delegate_to: localhost
+  register: ssh_verify
+  ignore_errors: true
+  tags: [verify]
+
+- name: Auto-rollback — SSH connectivity lost
+  when: ssh_verify is failed
+  tags: [verify, rollback]
+  block:
+    - name: Find latest backup file
+      ansible.builtin.shell:
+        cmd: "ls -t {{ firewall_backup_dir }}/*.bak | head -1"
+      register: latest_backup
+      changed_when: false
+
+    - name: Restore iptables from latest backup
+      ansible.builtin.shell:
+        cmd: "iptables-restore < {{ latest_backup.stdout }}"
+      changed_when: true
+
+    - name: Save restored rules
+      ansible.builtin.shell:
+        cmd: "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4"
+      changed_when: true
+
+    - name: Fail pipeline with rollback notice
+      ansible.builtin.fail:
+        msg: >-
+          ROLLBACK: Firewall rules caused SSH loss on {{ inventory_hostname }}.
+          Auto-rolled back to {{ latest_backup.stdout }}.
+          Fix the template and retry.
+
+- name: Show current iptables INPUT chain
+  ansible.builtin.shell:
+    cmd: "iptables -L INPUT --line-numbers -n"
+  register: final_rules
+  changed_when: false
+  tags: [verify]
+
+- name: Display applied rules
+  ansible.builtin.debug:
+    msg: "{{ final_rules.stdout_lines }}"
+  tags: [verify]

@@ -3,6 +3,7 @@ stages:
   - lint
   - validate
   - deploy-staging
+  - test-connectivity
   - deploy-prod
 
 variables:
@@ -11,7 +12,7 @@ variables:
   ANSIBLE_STDOUT_CALLBACK: "default"
   ANSIBLE_DEPRECATION_WARNINGS: "False"
   VAULT_ADDR: "http://103.110.85.98:8200"
-  NETLAB_HOST: "netlab.bank-infra.lab"
+  NETLAB_HOST: "netlab.bank"
   ANSIBLE_ROLES_PATH: "${CI_PROJECT_DIR}/roles"
   ANSIBLE_COLLECTIONS_PATH: "${CI_PROJECT_DIR}/collections"
   ANSIBLE_CONFIG: "${CI_PROJECT_DIR}/ansible.cfg"
@@ -20,6 +21,7 @@ default:
   before_script:
     - export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
+# ─────────────── LINT ───────────────
 lint:ansible:
   stage: lint
   script:
@@ -34,6 +36,7 @@ lint:yaml:
     - yamllint -d relaxed inventories/ playbooks/ roles/ || true
   allow_failure: true
 
+# ─────────────── VALIDATE ───────────────
 validate:syntax:
   stage: validate
   needs:
@@ -61,14 +64,15 @@ validate:dry-run:
         --check --diff
         || echo "Dry-run firewall complete"
 
+# ─────────────── DEPLOY STAGING ───────────────
 deploy:vlan-staging:
   stage: deploy-staging
   needs:
     - validate:dry-run
   environment:
-    name: staging
+    name: staging/network
   script:
-    - mkdir -p backups 
+    - mkdir -p backups/vlan
     - echo "Lab 1.1 - VLAN deploy - Pipeline ${CI_PIPELINE_ID}"
     - ansible-playbook playbooks/network/vlan-config.yml
         --inventory inventories/staging/network.yml
@@ -86,8 +90,9 @@ deploy:firewall-staging:
   needs:
     - validate:dry-run
   environment:
-    name: staging
+    name: staging/firewall
   script:
+    - mkdir -p backups/firewall backups/audit
     - echo "Lab 1.2 - Firewall deploy - Pipeline ${CI_PIPELINE_ID}"
     - ansible-playbook playbooks/firewall/firewall-rules.yml
         --inventory inventories/staging/servers.yml
@@ -116,12 +121,58 @@ rollback:firewall-staging:
         --inventory inventories/staging/servers.yml
         -e "rollback_epoch=${ROLLBACK_EPOCH}"
 
+# ─────────────── TEST CONNECTIVITY ───────────────
+test:firewall-connectivity:
+  stage: test-connectivity
+  needs:
+    - deploy:firewall-staging
+  script:
+    - echo "=== Test Connectivity — Post Firewall Deploy ==="
+    - echo "--- SSH from Runner to all servers ---"
+    - |
+      PASS=0; FAIL=0
+      for HOST in 116.118.50.73 116.118.51.79 103.110.85.124; do
+        if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes root@$HOST "echo SSH_OK" 2>/dev/null; then
+          echo "  ✅ SSH to $HOST — OK"
+          PASS=$((PASS+1))
+        else
+          echo "  ❌ SSH to $HOST — FAILED"
+          FAIL=$((FAIL+1))
+        fi
+      done
+    - echo "--- HTTP/HTTPS port check ---"
+    - |
+      for HOST in 116.118.50.73 116.118.51.79 103.110.85.124; do
+        for PORT in 80 443; do
+          if timeout 3 bash -c "echo >/dev/tcp/$HOST/$PORT" 2>/dev/null; then
+            echo "  ✅ Port $PORT on $HOST — OPEN"
+          else
+            echo "  ⚠️  Port $PORT on $HOST — CLOSED/FILTERED (may be expected)"
+          fi
+        done
+      done
+    - echo "--- ICMP ping check ---"
+    - |
+      for HOST in 116.118.50.73 116.118.51.79 103.110.85.124; do
+        if ping -c 2 -W 3 $HOST >/dev/null 2>&1; then
+          echo "  ✅ Ping $HOST — OK"
+        else
+          echo "  ❌ Ping $HOST — FAILED"
+        fi
+      done
+    - echo "--- Verify iptables rules on remote ---"
+    - ansible -i inventories/staging/servers.yml linux_servers
+        -m shell -a "iptables -L INPUT -n --line-numbers | head -20"
+    - echo "=== Connectivity tests complete ==="
+  allow_failure: false
+
+# ─────────────── DEPLOY PRODUCTION ───────────────
 deploy:vlan-production:
   stage: deploy-prod
   needs:
     - deploy:vlan-staging
   environment:
-    name: production
+    name: production/network
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
@@ -136,16 +187,22 @@ deploy:vlan-production:
 deploy:firewall-production:
   stage: deploy-prod
   needs:
-    - deploy:firewall-staging
+    - test:firewall-connectivity
   environment:
-    name: production
+    name: production/firewall
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
     - when: never
   script:
+    - mkdir -p backups/firewall backups/audit
     - echo "PRODUCTION FIREWALL - Operator ${GITLAB_USER_LOGIN}"
     - ansible-playbook playbooks/firewall/firewall-rules.yml
-        --inventory inventories/staging/servers.yml
+        --inventory inventories/production/servers.yml
         --diff
     - echo "Firewall production complete"
+  artifacts:
+    paths:
+      - backups/
+    expire_in: 30 days
+    when: always

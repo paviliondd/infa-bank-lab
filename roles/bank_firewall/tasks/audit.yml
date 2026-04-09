@@ -1,0 +1,55 @@
+---
+# ──────────────────────────────────────────────
+# Structured JSON audit log + cleanup
+# ──────────────────────────────────────────────
+- name: Ensure audit log directory exists
+  ansible.builtin.file:
+    path: /var/log/ansible
+    state: directory
+    mode: "0755"
+  tags: [audit]
+
+- name: Build audit log entry
+  ansible.builtin.set_fact:
+    audit_entry:
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      host: "{{ inventory_hostname }}"
+      ip: "{{ ansible_host }}"
+      action: "firewall-rules"
+      role: "{{ server_role | default('unknown') }}"
+      vault_enabled: "{{ firewall_use_vault }}"
+      ssh_sources_count: "{{ vault_ssh_sources | length }}"
+      rules_count: "{{ bank_firewall_rules | length }}"
+      user: "{{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}"
+      pipeline_id: "{{ lookup('env', 'CI_PIPELINE_ID') | default('local', true) }}"
+      commit: "{{ lookup('env', 'CI_COMMIT_SHORT_SHA') | default('local', true) }}"
+      status: "success"
+  tags: [audit]
+
+- name: Write structured JSON audit log
+  ansible.builtin.copy:
+    content: "{{ audit_entry | to_nice_json }}\n"
+    dest: "/var/log/ansible/firewall-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.json"
+    mode: "0644"
+  tags: [audit]
+
+- name: Append to combined audit log
+  ansible.builtin.lineinfile:
+    path: /var/log/ansible/firewall-audit.jsonl
+    line: "{{ audit_entry | to_json }}"
+    create: true
+    mode: "0644"
+  tags: [audit]
+
+- name: Fetch audit log to GitLab artifacts
+  ansible.builtin.fetch:
+    src: "/var/log/ansible/firewall-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.json"
+    dest: "{{ lookup('env', 'CI_PROJECT_DIR') | default('.') }}/backups/audit/{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.json"
+    flat: true
+  tags: [audit]
+
+- name: Cleanup temp file
+  ansible.builtin.file:
+    path: /tmp/iptables-new.rules
+    state: absent
+  tags: [cleanup]

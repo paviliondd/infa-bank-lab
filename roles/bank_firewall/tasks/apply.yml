@@ -1,0 +1,32 @@
+---
+# ──────────────────────────────────────────────
+# Generate, validate, and apply iptables rules
+# ──────────────────────────────────────────────
+- name: Ensure iptables-persistent is installed
+  ansible.builtin.apt:
+    name:
+      - iptables
+      - iptables-persistent
+    state: present
+    update_cache: false
+  tags: [install]
+
+- name: Generate iptables rules from template
+  ansible.builtin.template:
+    src: iptables.j2
+    dest: /tmp/iptables-new.rules
+    mode: "0600"
+  tags: [config]
+
+- name: Validate iptables rules syntax
+  ansible.builtin.shell:
+    cmd: "iptables-restore --test < /tmp/iptables-new.rules"
+  changed_when: false
+  tags: [validate]
+
+- name: Apply iptables rules
+  ansible.builtin.shell:
+    cmd: "iptables-restore < /tmp/iptables-new.rules"
+  changed_when: true
+  notify: save iptables
+  tags: [apply]

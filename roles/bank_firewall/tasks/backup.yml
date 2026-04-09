@@ -1,0 +1,41 @@
+---
+# ──────────────────────────────────────────────
+# Backup current iptables rules
+# ──────────────────────────────────────────────
+- name: Gather facts for timestamp
+  ansible.builtin.setup:
+    gather_subset:
+      - date_time
+      - network
+  tags: [always]
+
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ firewall_backup_dir }}"
+    state: directory
+    mode: "0700"
+  tags: [backup]
+
+- name: Backup current iptables rules
+  ansible.builtin.shell:
+    cmd: >-
+      iptables-save > {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak
+  register: backup_result
+  changed_when: true
+  tags: [backup]
+
+- name: Ensure local artifacts directory exists
+  ansible.builtin.file:
+    path: "{{ lookup('env', 'CI_PROJECT_DIR') | default(playbook_dir + '/../..') }}/backups/firewall"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  run_once: true
+  tags: [backup]
+
+- name: Fetch backup to GitLab artifacts
+  ansible.builtin.fetch:
+    src: "{{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
+    dest: "{{ lookup('env', 'CI_PROJECT_DIR') | default('.') }}/backups/firewall/{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
+    flat: true
+  tags: [backup]

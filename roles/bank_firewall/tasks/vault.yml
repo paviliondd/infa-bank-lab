@@ -1,0 +1,55 @@
+---
+# ──────────────────────────────────────────────
+# Vault AppRole Authentication
+# ──────────────────────────────────────────────
+- name: Authenticate to Vault via AppRole
+  ansible.builtin.uri:
+    url: "{{ vault_url }}/v1/auth/approle/login"
+    method: POST
+    body_format: json
+    body:
+      role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
+      secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"
+    status_code: 200
+  register: vault_login
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Fetch firewall secrets from Vault
+  ansible.builtin.uri:
+    url: "{{ vault_url }}/v1/secret/data/ansible/firewall"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_login.json.auth.client_token }}"
+    status_code: 200
+  register: vault_firewall
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Set facts from Vault secrets
+  ansible.builtin.set_fact:
+    vault_ssh_sources: >-
+      {{ vault_firewall.json.data.data.allowed_ssh_sources.split(',') | map('trim') | list }}
+    fw_drop_log_prefix: >-
+      {{ vault_firewall.json.data.data.drop_log_prefix | default('IPTABLES-DROP') }}
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Set fallback facts when Vault disabled
+  ansible.builtin.set_fact:
+    vault_ssh_sources: []
+    fw_drop_log_prefix: "IPTABLES-DROP"
+  when: not (firewall_use_vault | bool)
+  tags: [always]
+
+- name: Show Vault status
+  ansible.builtin.debug:
+    msg: "Vault secrets OK — {{ vault_ssh_sources | length }} SSH sources loaded"
+  when: firewall_use_vault | bool
+  tags: [always]
