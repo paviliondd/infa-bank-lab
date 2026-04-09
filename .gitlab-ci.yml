@@ -10,7 +10,7 @@ variables:
   ANSIBLE_FORCE_COLOR: "true"
   ANSIBLE_STDOUT_CALLBACK: "default"
   ANSIBLE_DEPRECATION_WARNINGS: "False"
-  VAULT_ADDR: "http://automation.bank-infra.lab:8200"
+  VAULT_ADDR: "http://103.110.85.98:8200"
   NETLAB_HOST: "netlab.bank-infra.lab"
   ANSIBLE_ROLES_PATH: "${CI_PROJECT_DIR}/roles"
   ANSIBLE_COLLECTIONS_PATH: "${CI_PROJECT_DIR}/collections"
