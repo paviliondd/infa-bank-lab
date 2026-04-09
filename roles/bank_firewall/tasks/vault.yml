@@ -53,8 +53,3 @@
     msg: "Vault secrets OK — {{ vault_ssh_sources | length }} SSH sources loaded"
   when: firewall_use_vault | bool
   tags: [always]
-
-- name: INTENTIONAL SABOTAGE FOR ROLLBACK TEST
-  ansible.builtin.set_fact:
-    vault_ssh_sources: ["1.2.3.4"] # Dummy IP, Gitlab runner is NOT here!
-  tags: [always]
