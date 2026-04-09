@@ -1,6 +1,17 @@
 ---
 bank_firewall_rules: []
 bank_zones: {}
-firewall_backup_dir: /tmp/firewall-backup
+
+# Backup
+firewall_backup_dir: /etc/iptables/backup
+
+# Default policies
 firewall_default_policy: DROP
 firewall_allowed_icmp: true
+
+# Vault integration
+firewall_use_vault: true
+vault_url: "http://automation.bank-infra.lab:8200"
+
+# Rollback settings
+firewall_test_timeout: 10

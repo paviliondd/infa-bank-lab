@@ -3,7 +3,11 @@ ansible_user: root
 ansible_ssh_private_key_file: /home/gitlab-runner/.ssh/id_ed25519
 ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-# Bank firewall zones
+# Vault integration
+vault_url: "http://automation.bank-infra.lab:8200"
+firewall_use_vault: true
+
+# Bank firewall zones (reference only)
 bank_zones:
   mgmt:
     subnets:
@@ -17,24 +21,8 @@ bank_zones:
     subnets:
       - "116.118.50.73/32"   # VPS 3
 
-# Bank firewall rules
+# Default firewall rules (SSH rules now from Vault)
 bank_firewall_rules:
-  # Allow SSH from MGMT zone only
-  - name: allow-ssh-from-mgmt
-    protocol: tcp
-    port: 22
-    source: "103.110.85.93/32"
-    action: ACCEPT
-    comment: "Allow SSH from GitLab VPS1"
-
-  - name: allow-ssh-from-netlab
-    protocol: tcp
-    port: 22
-    source: "103.110.85.105/32"
-    action: ACCEPT
-    comment: "Allow SSH from NetLab VPS6"
-
-  # Allow HTTP/HTTPS
   - name: allow-http
     protocol: tcp
     port: 80
@@ -49,7 +37,6 @@ bank_firewall_rules:
     action: ACCEPT
     comment: "Allow HTTPS"
 
-  # Allow internal communication
   - name: allow-internal-all
     protocol: all
     port: ""
@@ -57,7 +44,6 @@ bank_firewall_rules:
     action: ACCEPT
     comment: "Allow internal network"
 
-  # Allow established connections
   - name: allow-established
     protocol: all
     port: ""
@@ -67,4 +53,4 @@ bank_firewall_rules:
     comment: "Allow established connections"
 
 # Backup
-firewall_backup_dir: /tmp/firewall-backup
+firewall_backup_dir: /etc/iptables/backup

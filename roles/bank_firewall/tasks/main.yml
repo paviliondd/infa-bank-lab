@@ -1,7 +1,66 @@
 ---
-- name: Gather facts
+# ──────────────────────────────────────────────
+# Step 1: Vault AppRole — fetch SSH whitelist
+# ──────────────────────────────────────────────
+- name: Authenticate to Vault via AppRole
+  ansible.builtin.uri:
+    url: "{{ vault_url }}/v1/auth/approle/login"
+    method: POST
+    body_format: json
+    body:
+      role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
+      secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"
+    status_code: 200
+  register: vault_login
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Fetch firewall secrets from Vault
+  ansible.builtin.uri:
+    url: "{{ vault_url }}/v1/secret/data/ansible/firewall"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_login.json.auth.client_token }}"
+    status_code: 200
+  register: vault_firewall
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Set facts from Vault secrets
+  ansible.builtin.set_fact:
+    vault_ssh_sources: >-
+      {{ vault_firewall.json.data.data.allowed_ssh_sources.split(',') | map('trim') | list }}
+    fw_drop_log_prefix: >-
+      {{ vault_firewall.json.data.data.drop_log_prefix | default('IPTABLES-DROP') }}
+  when: firewall_use_vault | bool
+  tags: [always]
+
+- name: Set fallback facts when Vault disabled
+  ansible.builtin.set_fact:
+    vault_ssh_sources: []
+    fw_drop_log_prefix: "IPTABLES-DROP"
+  when: not (firewall_use_vault | bool)
+  tags: [always]
+
+- name: Show Vault status
+  ansible.builtin.debug:
+    msg: "Vault secrets OK — {{ vault_ssh_sources | length }} SSH sources loaded"
+  when: firewall_use_vault | bool
+  tags: [always]
+
+# ──────────────────────────────────────────────
+# Step 2: Backup current rules
+# ──────────────────────────────────────────────
+- name: Gather facts for timestamp
   ansible.builtin.setup:
     gather_subset:
+      - date_time
       - network
   tags: [always]
 
@@ -9,16 +68,27 @@
   ansible.builtin.file:
     path: "{{ firewall_backup_dir }}"
     state: directory
-    mode: "0755"
+    mode: "0700"
   tags: [backup]
 
 - name: Backup current iptables rules
   ansible.builtin.shell:
-    cmd: "iptables-save > {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
-  changed_when: false
-  ignore_errors: true
+    cmd: >-
+      iptables-save > {{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak
+  register: backup_result
+  changed_when: true
   tags: [backup]
 
+- name: Fetch backup to GitLab artifacts
+  ansible.builtin.fetch:
+    src: "{{ firewall_backup_dir }}/iptables-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
+    dest: "backups/firewall/{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.bak"
+    flat: true
+  tags: [backup]
+
+# ──────────────────────────────────────────────
+# Step 3: Install, generate, validate, apply
+# ──────────────────────────────────────────────
 - name: Ensure iptables-persistent is installed
   ansible.builtin.apt:
     name:
@@ -48,30 +118,71 @@
   notify: save iptables
   tags: [apply]
 
-- name: Verify SSH port still open after apply
+# ──────────────────────────────────────────────
+# Step 4: Verify SSH — auto-rollback if lost
+# ──────────────────────────────────────────────
+- name: Verify SSH still accessible after apply
   ansible.builtin.wait_for:
     port: 22
     host: "{{ ansible_host }}"
-    timeout: 10
+    timeout: "{{ firewall_test_timeout }}"
     delay: 2
   delegate_to: localhost
+  register: ssh_verify
+  ignore_errors: true
   tags: [verify]
 
-- name: Verify HTTP port rule exists
+- name: Auto-rollback — SSH connectivity lost
+  when: ssh_verify is failed
+  tags: [verify, rollback]
+  block:
+    - name: Find latest backup file
+      ansible.builtin.shell:
+        cmd: "ls -t {{ firewall_backup_dir }}/*.bak | head -1"
+      register: latest_backup
+      changed_when: false
+
+    - name: Restore iptables from latest backup
+      ansible.builtin.shell:
+        cmd: "iptables-restore < {{ latest_backup.stdout }}"
+      changed_when: true
+
+    - name: Save restored rules
+      ansible.builtin.shell:
+        cmd: "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4"
+      changed_when: true
+
+    - name: Fail pipeline with rollback notice
+      ansible.builtin.fail:
+        msg: >-
+          ROLLBACK: Firewall rules caused SSH loss on {{ inventory_hostname }}.
+          Auto-rolled back to {{ latest_backup.stdout }}.
+          Fix the template and retry.
+
+- name: Show current iptables INPUT chain
   ansible.builtin.shell:
-    cmd: "iptables -L INPUT -n | grep 'dpt:80'"
-  register: http_rule_check
+    cmd: "iptables -L INPUT --line-numbers -n"
+  register: final_rules
   changed_when: false
-  failed_when: false
   tags: [verify]
 
+- name: Display applied rules
+  ansible.builtin.debug:
+    msg: "{{ final_rules.stdout_lines }}"
+  tags: [verify]
+
+# ──────────────────────────────────────────────
+# Step 5: Audit log + cleanup
+# ──────────────────────────────────────────────
 - name: Log firewall change to audit
   ansible.builtin.lineinfile:
     path: /var/log/ansible-audit.log
     line: >-
       {{ ansible_date_time.iso8601 }} | {{ inventory_hostname }} |
       firewall-rules | role={{ server_role | default('unknown') }} |
-      user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }}
+      vault={{ firewall_use_vault }} |
+      user={{ lookup('env', 'GITLAB_USER_LOGIN') | default('pipeline', true) }} |
+      pipeline={{ lookup('env', 'CI_PIPELINE_ID') | default('local', true) }}
     create: true
     mode: "0644"
   tags: [audit]

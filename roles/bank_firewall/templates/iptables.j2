@@ -2,6 +2,7 @@
 # Host: {{ inventory_hostname }}
 # Date: {{ ansible_date_time.iso8601 }}
 # Pipeline: {{ lookup('env', 'CI_PIPELINE_ID') | default('local') }}
+# Vault: {{ firewall_use_vault | default(false) }}
 *filter
 :INPUT DROP [0:0]
 :FORWARD DROP [0:0]
@@ -18,6 +19,14 @@
 -A INPUT -p icmp -j ACCEPT
 {% endif %}
 
+# ── SSH whitelist from Vault ──
+{% if vault_ssh_sources is defined and vault_ssh_sources | length > 0 %}
+{% for src in vault_ssh_sources %}
+-A INPUT -s {{ src | trim }} -p tcp --dport 22 -j ACCEPT
+{% endfor %}
+{% endif %}
+
+# ── Additional rules from playbook/group_vars ──
 {% for rule in bank_firewall_rules %}
 # {{ rule.comment }}
 {% if rule.protocol == 'all' and rule.extra_args is defined %}
@@ -30,6 +39,6 @@
 {% endfor %}
 
 # Log dropped packets
--A INPUT -j LOG --log-prefix "IPTABLES-DROP: " --log-level 4
+-A INPUT -j LOG --log-prefix "{{ fw_drop_log_prefix | default('IPTABLES-DROP') }}: " --log-level 4
 
 COMMIT
