@@ -1,0 +1,36 @@
+---
+- name: Ensure Jenkins config directory
+  ansible.builtin.file:
+    path: "/opt/jenkins_data"
+    state: directory
+    owner: "1000"  # Jenkins container uses UID 1000
+    group: "1000"
+    mode: "0755"
+
+- name: Create docker-compose for Jenkins
+  ansible.builtin.copy:
+    dest: "/opt/jenkins_data/docker-compose.yml"
+    mode: "0644"
+    content: |
+      version: '3.8'
+      services:
+        jenkins:
+          image: "jenkins/jenkins:lts" # Standard image
+          container_name: "jenkins-master"
+          user: root # Run as root inside the container to avoid permission issues and allow apt-get
+          restart: "unless-stopped"
+          privileged: true
+          ports:
+            - "8080:8080"
+            - "50000:50000"
+          volumes:
+            - "jenkins_home:/var/jenkins_home"
+            - "/var/run/docker.sock:/var/run/docker.sock"
+      volumes:
+        jenkins_home:
+
+- name: Deploy Jenkins with docker-compose
+  community.docker.docker_compose_v2:
+    project_src: "/opt/jenkins_data"
+    state: present
+    recreate: auto

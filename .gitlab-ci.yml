@@ -1,7 +1,7 @@
----
 stages:
   - lint
   - validate
+  - deploy-ci
   - deploy-staging
   - test-connectivity
   - deploy-prod
@@ -63,6 +63,15 @@ validate:dry-run:
         --inventory inventories/staging/servers.yml
         --check --diff
         || echo "Dry-run firewall complete"
+
+# ─────────────── DEPLOY CI ───────────────
+deploy:jenkins:
+  stage: deploy-ci
+  when: manual
+  script:
+    - echo "Deploying Jenkins CI Server on VPS 1"
+    - ansible-playbook playbooks/ci/jenkins-setup.yml
+    - echo "Jenkins deployed successfully"
 
 # ─────────────── DEPLOY STAGING ───────────────
 deploy:vlan-staging:
