@@ -215,3 +215,19 @@ deploy:firewall-production:
       - backups/
     expire_in: 30 days
     when: always
+# Job: Khởi động chế độ quét backup tự động bằng Ansible
+auto_network_backup:
+  stage: deploy # Hoặc tạo thêm 1 stage mới tên drom
+  tags:
+    - network-runner
+  script:
+    - echo "Khởi chạy Ansible hút config hạ tầng..."
+    - cd dr_backup 
+    - ansible-playbook -i ../inventories/staging/network.yml ansible_backup.yml
+  artifacts:
+    paths:
+      - dr_backup/backups/
+    expire_in: 7 days
+  rules:
+    # Cấu hình "Chỉ chạy job này khi trigger bằng Lịch (Schedules) của GitLab"
+    - if: '$CI_PIPELINE_SOURCE == "schedule"' 
