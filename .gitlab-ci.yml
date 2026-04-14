@@ -5,6 +5,7 @@ stages:
   - deploy-staging
   - test-connectivity
   - deploy-prod
+  - network-dr-schedule
 
 variables:
   ANSIBLE_HOST_KEY_CHECKING: "False"
@@ -215,9 +216,10 @@ deploy:firewall-production:
       - backups/
     expire_in: 30 days
     when: always
-# Job: Khởi động chế độ quét backup tự động bằng Ansible
+
+# ─────────────── BACKUP DR (SCHEDULED) ───────────────
 auto_network_backup:
-  stage: deploy # Hoặc tạo thêm 1 stage mới tên drom
+  stage: network-dr-schedule
   tags:
     - network-runner
   script:
@@ -229,5 +231,4 @@ auto_network_backup:
       - dr_backup/backups/
     expire_in: 7 days
   rules:
-    # Cấu hình "Chỉ chạy job này khi trigger bằng Lịch (Schedules) của GitLab"
-    - if: '$CI_PIPELINE_SOURCE == "schedule"' 
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
