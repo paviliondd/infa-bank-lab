@@ -1,0 +1,15 @@
+---
+- name: IOS - Cấu hình VLANs
+  cisco.ios.ios_vlans:
+    config:
+      - name: "{{ item.name }}"
+        vlan_id: "{{ item.vlan_id }}"
+        state: active
+    state: merged
+  loop: "{{ vlans }}"
+
+- name: IOS - Lưu trữ cấu hình (Idempotent Handler)
+  cisco.ios.ios_command:
+    commands:
+      - write memory
+  when: vlans is defined

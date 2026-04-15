@@ -5,6 +5,10 @@ terraform {
     key    = "staging/network-infra.tfstate"
     region = "ap-southeast-1" # Giá trị giả định để API bot aws-sdk hoạt động
 
+    # Cặp chìa khoá MinIO thực tế của bạn
+    access_key = "pMvelC27Kf0XuGCD"
+    secret_key = "Sc7SR5J3aJaX3pVGWKIWMmXod6wRHBNI"
+
     # Điểm truy cập của MinIO trên VPS 5
     # Sửa HTTP/HTTPS và IP khớp với thực tế config của bạn (Vd: k8s-worker2)
     endpoints = {

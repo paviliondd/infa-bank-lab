@@ -1,0 +1,20 @@
+namespace: bank
+name: network
+version: 1.0.0
+readme: README.md
+authors:
+  - Bank Infrastructure Team <infra-team@bank.local>
+description: Ansible Collection for Standardized Multi-Vendor Network Configurations (Cisco, Juniper, Arista).
+license:
+  - MIT
+tags:
+  - networking
+  - multi-vendor
+  - cisco
+  - juniper
+  - arista
+dependencies:
+  "cisco.ios": ">=4.0.0"
+  "junipernetworks.junos": ">=3.0.0"
+  "arista.eos": ">=6.0.0"
+repository: "http://gitlab.bank.local/bank-infra/infra-automation"

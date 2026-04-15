@@ -1,0 +1,15 @@
+---
+- name: EOS - Cấu hình VLANs
+  arista.eos.eos_vlans:
+    config:
+      - name: "{{ item.name }}"
+        vlan_id: "{{ item.vlan_id }}"
+        state: active
+    state: merged
+  loop: "{{ vlans }}"
+
+- name: EOS - Ghi đè vào NVRAM (write memory)
+  arista.eos.eos_command:
+    commands:
+      - write memory
+  when: vlans is defined

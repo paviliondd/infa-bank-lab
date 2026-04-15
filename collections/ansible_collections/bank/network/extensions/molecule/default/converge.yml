@@ -1,0 +1,15 @@
+---
+- name: Trình Mô Phỏng Hội Tụ Molecule (Converge)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Tự động trỏ OS biến giả lập cho Molecule Test"
+      set_fact:
+        ansible_network_os: "cisco.ios.ios"
+        vlans:
+          - name: "MOLECULE_MOCK_VLAN"
+            vlan_id: 999
+
+    - name: "Include Role vlan_config từ Collection hiện tại"
+      include_role:
+        name: bank.network.vlan_config

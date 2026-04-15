@@ -1,0 +1,11 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: delegated # Không dùng docker ảo hoá cả hệ điều hành mà chỉ giả lập lệnh
+platforms:
+  - name: mock_switch
+provisioner:
+  name: ansible
+verifier:
+  name: ansible

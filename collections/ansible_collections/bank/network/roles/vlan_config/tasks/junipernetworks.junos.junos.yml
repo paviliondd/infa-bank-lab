@@ -1,0 +1,14 @@
+---
+- name: Junos - Cấu hình VLANs
+  junipernetworks.junos.junos_vlans:
+    config:
+      - name: "{{ item.name }}"
+        vlan_id: "{{ item.vlan_id }}"
+    state: merged
+  loop: "{{ vlans }}"
+
+- name: Junos - Commit Cấu hình
+  junipernetworks.junos.junos_config:
+    confirm: 5
+    comment: "Ansible Pushed VLANs"
+  when: vlans is defined

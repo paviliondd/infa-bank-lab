@@ -1,0 +1,4 @@
+---
+# File điều hướng Multi-vendor logic
+- name: Determine vendor and execute specific VLAN tasks
+  include_tasks: "{{ ansible_network_os }}.yml"
