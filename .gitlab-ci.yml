@@ -232,3 +232,42 @@ auto_network_backup:
     expire_in: 7 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
+
+# ===== LAB 2.3: IaC SECURITY SCANNING =====
+
+tfsec:
+  stage: test
+  image: aquasec/tfsec:latest
+  script:
+    - echo "==> Scanning Terraform code with tfsec..."
+    - tfsec . --minimum-severity HIGH --format lovely
+  allow_failure: false
+  rules:
+    - changes:
+        - "**/*.tf"
+
+trivy-iac:
+  stage: test
+  image: aquasec/trivy:latest
+  script:
+    - echo "==> Scanning IaC files with Trivy (replaces Checkov)..."
+    - trivy config . --exit-code 1 --severity HIGH,CRITICAL
+  allow_failure: true
+  rules:
+    - changes:
+        - "**/*.tf"
+        - "**/*.yml"
+        - "**/*.yaml"
+
+ansible-lint:
+  stage: test
+  script:
+    - echo "==> Linting Ansible code with ansible-lint..."
+    - ansible-lint playbooks/ roles/ collections/
+        --warn-list yaml[truthy]
+        --exclude .git
+  allow_failure: false
+  rules:
+    - changes:
+        - "**/*.yml"
+        - "**/*.yaml"
