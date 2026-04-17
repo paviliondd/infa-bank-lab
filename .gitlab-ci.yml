@@ -236,7 +236,7 @@ auto_network_backup:
 # ===== LAB 2.3: IaC SECURITY SCANNING =====
 
 tfsec:
-  stage: test
+  stage: lint
   image: aquasec/tfsec:latest
   script:
     - echo "==> Scanning Terraform code with tfsec..."
@@ -247,7 +247,7 @@ tfsec:
         - "**/*.tf"
 
 trivy-iac:
-  stage: test
+  stage: lint
   image: aquasec/trivy:latest
   script:
     - echo "==> Scanning IaC files with Trivy (replaces Checkov)..."
@@ -260,7 +260,7 @@ trivy-iac:
         - "**/*.yaml"
 
 ansible-lint:
-  stage: test
+  stage: lint
   script:
     - echo "==> Linting Ansible code with ansible-lint..."
     - ansible-lint playbooks/ roles/ collections/
