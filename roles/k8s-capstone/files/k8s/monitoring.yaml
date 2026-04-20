@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bank-portal-monitor
+  namespace: monitoring # Prometheus nằm đây nên deploy ServiceMonitor ở đây
+  labels:
+    app: bank-portal
+    release: bank-monitoring # Quan trọng: để Prometheus pick up
+spec:
+  namespaceSelector:
+    matchNames:
+      - banking-prod
+  selector:
+    matchLabels:
+      app: bank-portal
+      component: web-frontend
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bank-portal-alerts
+  namespace: monitoring
+  labels:
+    release: bank-monitoring
+spec:
+  groups:
+  - name: bank_portal_alerts
+    rules:
+    - alert: HighTransactionTraffic
+      expr: rate(bank_requests_total{endpoint="/transfer"}[1m]) > 5
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Lưu lượng giao dịch /transfer tăng đột biến"
+        description: "Traffic chuyển tiền đang cao bất thường ({{ $value }} req/sec). Có khả năng bị tấn công DDoS hoặc đang Flash Sale."
+    - alert: HighLatency
+      expr: rate(bank_request_latency_seconds_sum[1m]) / rate(bank_request_latency_seconds_count[1m]) > 1.0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Độ trễ hệ thống Core Banking quá cao"
+        description: "API bị chậm, trung bình >1s. Cần check ngay CPU/Memory usage."

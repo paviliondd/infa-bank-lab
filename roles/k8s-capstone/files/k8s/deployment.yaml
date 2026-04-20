@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-portal
+  namespace: banking-prod
+  labels:
+    app: bank-portal
+    component: web-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bank-portal
+  template:
+    metadata:
+      labels:
+        app: bank-portal
+        component: web-frontend
+    spec:
+      containers:
+      - name: bank-portal
+        image: nexus.linuxunity.com/bank-registry/bank-portal:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10

@@ -1,0 +1,75 @@
+pipeline {
+    agent { label 'docker' }
+    
+    environment {
+        DOCKER_REGISTRY = 'nexus.linuxunity.com/bank-registry'
+        IMAGE_NAME = "bank-portal"
+        DOCKER_CRED = 'nexus-docker-cred'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'http://103.110.85.93/bank-infra/infra-automation.git', credentialsId: 'gitlab-credentials'
+            }
+        }
+        
+        stage('Security Scan: Trivy FS') {
+            steps {
+                sh '''
+                    # Scan source code for vulnerabilities before building
+                    # Ignore unfixed vulnerabilities, fail only on CRITICAL / HIGH that have fixes
+                    trivy fs \
+                        --severity HIGH,CRITICAL \
+                        --ignore-unfixed \
+                        --exit-code 0 \
+                        apps/bank_portal/
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('apps/bank_portal') {
+                    sh "docker build -t ${IMAGE_NAME}:latest ."
+                    sh "docker tag ${IMAGE_NAME}:latest ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                }
+            }
+        }
+        
+        stage('Security Scan: Trivy Image') {
+            steps {
+                sh '''
+                    # Scan container image for vulnerabilities
+                    trivy image \
+                        --severity HIGH,CRITICAL \
+                        --ignore-unfixed \
+                        --exit-code 0 \
+                        ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Push to Nexus Registry') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CRED}", passwordVariable: 'NEXUS_PWD', usernameVariable: 'NEXUS_USR')]) {
+                    sh 'echo $NEXUS_PWD | docker login nexus.linuxunity.com -u $NEXUS_USR --password-stdin'
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                }
+            }
+        }
+        
+        stage('Deploy to Staging/Prod K8s') {
+            steps {
+                echo "Triển khai thông qua Ansible chạy manual trên Master Node."
+                echo "Gợi ý: ansible-playbook capstone-setup.yml"
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout nexus.linuxunity.com || true'
+        }
+    }
+}

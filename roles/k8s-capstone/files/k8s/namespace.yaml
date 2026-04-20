@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: banking-prod
+  labels:
+    environment: production
+    app: bank-portal
