@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aiops-servicemonitor
+  namespace: monitoring
+  labels:
+    release: bank-monitoring
+    app: aiops
+spec:
+  selector:
+    matchLabels:
+      app: aiops
+      component: inference-service
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aiops-alert-rules
+  namespace: monitoring
+  labels:
+    release: bank-monitoring
+    app: aiops
+spec:
+  groups:
+    - name: aiops.anomaly_detection
+      interval: 30s
+      rules:
+        - alert: AIOpsAnomalyDetected
+          expr: aiops_anomaly_detected == 1
+          for: 3m
+          labels:
+            severity: critical
+            team: infra
+          annotations:
+            summary: "AIOps phat hien bat thuong he thong!"
+            description: >-
+              AIOps Isolation Forest phat hien hanh vi bat thuong lien tuc 3 phut.
+              Kiem tra ngay CPU, Memory, Network tren Grafana.
+
+        - alert: AIOpsServiceDown
+          expr: absent(aiops_model_loaded)
+          for: 2m
+          labels:
+            severity: critical
+            team: infra
+          annotations:
+            summary: "AIOps Service khong phan hoi"
+            description: >-
+              Prometheus khong scrape duoc metrics tu AIOps service.
+              Kiem tra Pod trong namespace monitoring.
+
+        - alert: AIOpsModelNotLoaded
+          expr: aiops_model_loaded == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: infra
+          annotations:
+            summary: "AIOps Model chua duoc load"
+            description: >-
+              AIOps service dang chay nhung model chua load.
+              Chay: kubectl create job --from=cronjob/aiops-trainer initial-train -n monitoring

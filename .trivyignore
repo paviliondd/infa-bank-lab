@@ -1,0 +1,11 @@
+# .trivyignore
+# Bỏ qua Python application source khi scan IaC
+# (chỉ scan K8s YAML và Terraform, không scan application code)
+
+# Python source code — không phải IaC
+apps/aiops/aiops_service/main.py
+apps/aiops/aiops_service/collector.py
+apps/aiops/aiops_service/requirements.txt
+apps/aiops/model/train_model.py
+apps/aiops/model/requirements.txt
+apps/aiops/data_collection/prometheus_collector.py

@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-service
+  namespace: monitoring
+  labels:
+    app: aiops
+    component: inference-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops
+      component: inference-service
+  template:
+    metadata:
+      labels:
+        app: aiops
+        component: inference-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-worker1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: aiops-service
+          image: nexus.linuxunity.com/bank-registry/aiops-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://bank-monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+            - name: MODEL_PATH
+              value: "/model/anomaly_model.pkl"
+            - name: SCALER_PATH
+              value: "/model/scaler.pkl"
+            - name: THRESHOLD_PATH
+              value: "/model/threshold.txt"
+            - name: COLLECT_INTERVAL_SEC
+              value: "60"
+            - name: LOG_LEVEL
+              value: "INFO"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /model
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: aiops-model-pvc
+      imagePullSecrets:
+        - name: nexus-registry-secret
+      terminationGracePeriodSeconds: 30

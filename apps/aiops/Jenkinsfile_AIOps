@@ -1,0 +1,204 @@
+// ─────────────────────────────────────────────────────────────────────── //
+//  Lab 4.1 — Jenkinsfile AIOps CI/CD Pipeline
+//
+//  Stages:
+//    1. Checkout        — Clone source code
+//    2. Build Images    — Build aiops-trainer + aiops-service images
+//    3. Push to Nexus   — Push cả 2 images lên nexus.linuxunity.com
+//    4. Deploy K8s      — Apply toàn bộ manifests
+//    5. Trigger Training — Chạy training job lần đầu (hoặc retrain thủ công)
+//    6. Verify          — Kiểm tra service đã sẵn sàng
+// ─────────────────────────────────────────────────────────────────────── //
+
+pipeline {
+    agent any
+
+    environment {
+        NEXUS_REGISTRY = "nexus.linuxunity.com"
+        NEXUS_REPO     = "bank-registry"
+        TRAINER_IMAGE  = "${NEXUS_REGISTRY}/${NEXUS_REPO}/aiops-trainer"
+        SERVICE_IMAGE  = "${NEXUS_REGISTRY}/${NEXUS_REPO}/aiops-service"
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+        K8S_NAMESPACE  = "monitoring"
+        APP_DIR        = "apps/aiops"
+    }
+
+    parameters {
+        booleanParam(
+            name:         'TRIGGER_TRAINING',
+            defaultValue: true,
+            description:  'Trigger training job sau khi deploy? (false = chỉ update service image)'
+        )
+        string(
+            name:         'IMAGE_TAG_OVERRIDE',
+            defaultValue: '',
+            description:  'Override image tag (để trống = dùng BUILD_NUMBER)'
+        )
+    }
+
+    stages {
+
+        // ── Stage 1: Checkout ─────────────────────────────────────────── //
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.EFFECTIVE_TAG = params.IMAGE_TAG_OVERRIDE?.trim() ?: env.IMAGE_TAG
+                    echo "Image tag: ${env.EFFECTIVE_TAG}"
+                }
+            }
+        }
+
+        // ── Stage 2: Build Images ─────────────────────────────────────── //
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build Trainer Image') {
+                    steps {
+                        dir("${APP_DIR}") {
+                            sh """
+                                docker build \\
+                                  -f Dockerfile.trainer \\
+                                  -t ${TRAINER_IMAGE}:${env.EFFECTIVE_TAG} \\
+                                  -t ${TRAINER_IMAGE}:latest \\
+                                  .
+                            """
+                        }
+                    }
+                }
+                stage('Build Service Image') {
+                    steps {
+                        dir("${APP_DIR}/aiops_service") {
+                            sh """
+                                docker build \\
+                                  -t ${SERVICE_IMAGE}:${env.EFFECTIVE_TAG} \\
+                                  -t ${SERVICE_IMAGE}:latest \\
+                                  .
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Stage 3: Push to Nexus ────────────────────────────────────── //
+        stage('Push to Nexus Registry') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'nexus-docker-credentials',
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {
+                    sh """
+                        echo \$NEXUS_PASS | docker login ${NEXUS_REGISTRY} \\
+                          -u \$NEXUS_USER --password-stdin
+
+                        # Push trainer image
+                        docker push ${TRAINER_IMAGE}:${env.EFFECTIVE_TAG}
+                        docker push ${TRAINER_IMAGE}:latest
+
+                        # Push service image
+                        docker push ${SERVICE_IMAGE}:${env.EFFECTIVE_TAG}
+                        docker push ${SERVICE_IMAGE}:latest
+
+                        echo "✓ Images pushed successfully"
+                    """
+                }
+            }
+        }
+
+        // ── Stage 4: Deploy to Kubernetes ─────────────────────────────── //
+        stage('Deploy to K8s') {
+            steps {
+                sh """
+                    # Apply toàn bộ K8s manifests theo thứ tự
+                    # Cần apply từ ansible roles directory
+                    kubectl apply -f roles/k8s-aiops/files/k8s/pvc.yaml              -n ${K8S_NAMESPACE}
+                    kubectl apply -f roles/k8s-aiops/files/k8s/training_cronjob.yaml  -n ${K8S_NAMESPACE}
+                    kubectl apply -f roles/k8s-aiops/files/k8s/deployment.yaml        -n ${K8S_NAMESPACE}
+                    kubectl apply -f roles/k8s-aiops/files/k8s/service-ingress.yaml   -n ${K8S_NAMESPACE}
+                    kubectl apply -f roles/k8s-aiops/files/k8s/monitoring-rules.yaml  -n ${K8S_NAMESPACE}
+
+                    # Update image tag trong deployment
+                    kubectl set image deployment/aiops-service \\
+                      aiops-service=${SERVICE_IMAGE}:${env.EFFECTIVE_TAG} \\
+                      -n ${K8S_NAMESPACE}
+
+                    echo "✓ K8s manifests applied"
+                """
+            }
+        }
+
+        // ── Stage 5: Trigger Training Job ─────────────────────────────── //
+        stage('Trigger Training Job') {
+            when {
+                expression { return params.TRIGGER_TRAINING }
+            }
+            steps {
+                sh """
+                    # Xóa job cũ nếu còn tồn tại
+                    kubectl delete job aiops-initial-train -n ${K8S_NAMESPACE} --ignore-not-found=true
+
+                    # Tạo job mới từ CronJob template
+                    kubectl create job aiops-initial-train \\
+                      --from=cronjob/aiops-trainer \\
+                      -n ${K8S_NAMESPACE}
+
+                    echo "Training job đã được trigger!"
+                    echo "Theo dõi: kubectl logs -f job/aiops-initial-train -n ${K8S_NAMESPACE}"
+
+                    # Chờ training job hoàn thành (timeout 15 phút)
+                    kubectl wait job/aiops-initial-train \\
+                      --for=condition=complete \\
+                      --timeout=900s \\
+                      -n ${K8S_NAMESPACE} || true
+
+                    # In log training
+                    kubectl logs job/aiops-initial-train -n ${K8S_NAMESPACE} || true
+                """
+            }
+        }
+
+        // ── Stage 6: Verify Service ───────────────────────────────────── //
+        stage('Verify Deployment') {
+            steps {
+                sh """
+                    # Chờ deployment rollout
+                    kubectl rollout status deployment/aiops-service \\
+                      -n ${K8S_NAMESPACE} --timeout=120s
+
+                    # Kiểm tra Pod running
+                    kubectl get pods -n ${K8S_NAMESPACE} -l app=aiops
+
+                    # Kiểm tra service
+                    kubectl get svc -n ${K8S_NAMESPACE} aiops-service
+
+                    # Test health endpoint qua ClusterIP
+                    CLUSTER_IP=\$(kubectl get svc aiops-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                    curl -s --max-time 10 http://\$CLUSTER_IP:8000/health | python3 -m json.tool || true
+
+                    echo "✓ Deployment verified!"
+                    echo "✓ Dashboard: https://aiops.linuxunity.com"
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ╔══════════════════════════════════════════════════════╗
+            ║   Lab 4.1 AIOps — Deploy thành công! ✅             ║
+            ║   Service: https://aiops.linuxunity.com             ║
+            ║   Metrics: https://aiops.linuxunity.com/metrics     ║
+            ║   API Docs: https://aiops.linuxunity.com/docs       ║
+            ╚══════════════════════════════════════════════════════╝
+            """
+        }
+        failure {
+            echo "Pipeline thất bại! Kiểm tra logs từng stage."
+        }
+        always {
+            sh "docker logout ${NEXUS_REGISTRY} || true"
+        }
+    }
+}

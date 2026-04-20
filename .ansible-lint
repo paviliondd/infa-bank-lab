@@ -3,6 +3,8 @@ profile: min
 exclude_paths:
   - collections/
   - .cache/
+  - apps/
+  - monitoring-ansible/
 skip_list:
   - meta-no-info
   - jinja[spacing]

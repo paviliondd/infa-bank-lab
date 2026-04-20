@@ -1,0 +1,14 @@
+---
+# aiops-setup.yml — Lab 4.1: Deploy AIOps Anomaly Detection Engine
+#
+# Cách dùng:
+#   ansible-playbook aiops-setup.yml --inventory inventories/staging/servers.yml
+#
+- name: Deploy AIOps Anomaly Detection Service (Lab 4.1)
+  hosts: k8s_master
+  become: true
+  vars:
+    nexus_registry: "nexus.linuxunity.com"
+    aiops_namespace: "monitoring"
+  roles:
+    - k8s-aiops

@@ -1,0 +1,77 @@
+---
+# roles/k8s-aiops/tasks/main.yml
+# Lab 4.1 — Deploy AIOps Anomaly Detection Engine vào K8s
+
+- name: Tạo thư mục staging manifests trên Master Node
+  file:
+    path: /tmp/aiops-manifests
+    state: directory
+    mode: '0755'
+
+- name: Copy K8s manifests lên Master Node
+  copy:
+    src: "k8s/"
+    dest: /tmp/aiops-manifests/
+    mode: '0644'
+
+- name: Apply PVC (NFS shared storage cho model .pkl)
+  command: kubectl apply -f /tmp/aiops-manifests/pvc.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: pvc_result
+  changed_when: "'created' in pvc_result.stdout or 'configured' in pvc_result.stdout"
+
+- name: Apply CronJob training (weekly retraining mỗi Chủ nhật 2AM)
+  command: kubectl apply -f /tmp/aiops-manifests/training_cronjob.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cronjob_result
+  changed_when: "'created' in cronjob_result.stdout or 'configured' in cronjob_result.stdout"
+
+- name: Apply Deployment (FastAPI inference service)
+  command: kubectl apply -f /tmp/aiops-manifests/deployment.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: deploy_result
+  changed_when: "'created' in deploy_result.stdout or 'configured' in deploy_result.stdout"
+
+- name: Apply Service + Ingress (aiops.linuxunity.com HTTPS)
+  command: kubectl apply -f /tmp/aiops-manifests/service-ingress.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply ServiceMonitor + PrometheusRule (Alert → Slack)
+  command: kubectl apply -f /tmp/aiops-manifests/monitoring-rules.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Chờ Deployment rollout hoàn tất
+  command: >
+    kubectl rollout status deployment/aiops-service
+    -n monitoring --timeout=120s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: rollout_status
+  changed_when: false
+
+- name: Trigger training Job lần đầu (tạo model .pkl ban đầu)
+  command: >
+    kubectl create job aiops-initial-train
+    --from=cronjob/aiops-trainer
+    -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: train_job
+  failed_when:
+    - train_job.rc != 0
+    - "'AlreadyExists' not in train_job.stderr"
+  changed_when: "'created' in train_job.stdout"
+
+- name: Thông báo kết quả deploy
+  debug:
+    msg: |
+      ✅ AIOps Lab 4.1 deployed!
+      📊 Dashboard  : https://aiops.linuxunity.com
+      📈 Metrics    : https://aiops.linuxunity.com/metrics
+      📝 API Docs   : https://aiops.linuxunity.com/docs
+      🔁 CronJob    : aiops-trainer (mỗi Chủ nhật 2AM UTC)

@@ -249,7 +249,14 @@ trivy-iac:
   stage: lint
   script:
     - echo "==> Scanning IaC files with Trivy..."
-    - docker run --rm -v ${CI_PROJECT_DIR}:/workspace aquasec/trivy:latest config /workspace --severity HIGH,CRITICAL
+    - |
+      docker run --rm \
+        -v ${CI_PROJECT_DIR}:/workspace \
+        aquasec/trivy:latest config /workspace \
+        --severity HIGH,CRITICAL \
+        --skip-dirs apps/aiops/aiops_service \
+        --skip-dirs apps/aiops/model \
+        --skip-dirs apps/aiops/data_collection
   allow_failure: true
   rules:
     - changes:
@@ -261,10 +268,30 @@ ansible-lint-check:
   stage: lint
   script:
     - echo "==> Linting Ansible code..."
-    - ansible-lint playbooks/ roles/ collections/ --warn-list yaml[truthy] --exclude .git
+    - ansible-lint playbooks/ roles/ collections/ --warn-list yaml[truthy] --exclude .git --exclude apps
   allow_failure: false
   rules:
     - changes:
         - "**/*.yml"
         - "**/*.yaml"
+
+# ─────────────── LAB 4.1: AIOps DEPLOY ───────────────
+deploy:aiops-staging:
+  stage: deploy-staging
+  when: manual
+  environment:
+    name: staging/aiops
+  script:
+    - echo "Lab 4.1 - AIOps Anomaly Detection Deploy - Pipeline ${CI_PIPELINE_ID}"
+    - ansible-playbook aiops-setup.yml
+        --inventory inventories/staging/servers.yml
+        --diff
+    - echo "AIOps deploy complete — https://aiops.linuxunity.com"
+  rules:
+    - changes:
+        - "roles/k8s-aiops/**"
+        - "aiops-setup.yml"
+        - "apps/aiops/**"
+      when: manual
+    - when: never
 

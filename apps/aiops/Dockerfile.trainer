@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────── #
+#  AIOps Trainer — Dockerfile
+#  Image này chỉ chạy khi K8s CronJob trigger (một lần rồi xong).
+#  Build: docker build -f Dockerfile.trainer -t aiops-trainer:latest .
+# ─────────────────────────────────────────────────────────────────────── #
+
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Chỉ cần model requirements (không cần fastapi)
+COPY model/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy cả 2 scripts
+COPY data_collection/prometheus_collector.py .
+COPY model/train_model.py .
+
+# Non-root user
+RUN useradd --no-create-home --shell /bin/false aiops
+USER aiops
+
+# PVC mount point
+VOLUME ["/model"]
+
+# Script chạy tuần tự: collect → train
+CMD ["/bin/sh", "-c", "python prometheus_collector.py && python train_model.py"]

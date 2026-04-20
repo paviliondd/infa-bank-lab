@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aiops-trainer
+  namespace: monitoring
+  labels:
+    app: aiops
+    component: trainer
+spec:
+  schedule: "0 2 * * 0"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: aiops
+            component: trainer
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: k8s-worker1
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: aiops-trainer
+              image: nexus.linuxunity.com/bank-registry/aiops-trainer:latest
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: "200m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              env:
+                - name: PROMETHEUS_URL
+                  value: "http://bank-monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+                - name: COLLECTION_DAYS
+                  value: "3"
+                - name: COLLECTION_STEP
+                  value: "5m"
+                - name: OUTPUT_PATH
+                  value: "/model/metrics_dataset.csv"
+                - name: INPUT_PATH
+                  value: "/model/metrics_dataset.csv"
+                - name: IF_CONTAMINATION
+                  value: "0.05"
+                - name: IF_N_ESTIMATORS
+                  value: "200"
+              volumeMounts:
+                - name: model-storage
+                  mountPath: /model
+          volumes:
+            - name: model-storage
+              persistentVolumeClaim:
+                claimName: aiops-model-pvc
+          imagePullSecrets:
+            - name: nexus-registry-secret

@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiops-service
+  namespace: monitoring
+  labels:
+    app: aiops
+    component: inference-service
+spec:
+  type: ClusterIP
+  selector:
+    app: aiops
+    component: inference-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aiops-ingress
+  namespace: monitoring
+  labels:
+    app: aiops
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - aiops.linuxunity.com
+      secretName: aiops-tls-secret
+  rules:
+    - host: aiops.linuxunity.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aiops-service
+                port:
+                  number: 8000

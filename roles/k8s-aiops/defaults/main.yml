@@ -1,0 +1,8 @@
+---
+# roles/k8s-aiops/defaults/main.yml
+nexus_registry: "nexus.linuxunity.com"
+nexus_repo: "bank-registry"
+aiops_namespace: "monitoring"
+aiops_node: "k8s-worker1"
+prometheus_svc: "bank-monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+aiops_domain: "aiops.linuxunity.com"
