@@ -17,12 +17,15 @@ pipeline {
         stage('Security Scan: Trivy FS') {
             steps {
                 sh '''
-                    # Run Trivy via Docker
-                    docker run --rm -v ${WORKSPACE}:/workspace aquasec/trivy fs \\
+                    # Download Trivy binary to avoid Docker Volume issues in Jenkins
+                    wget -qO- https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.tar.gz | tar xz trivy
+                    
+                    # Scan source code
+                    ./trivy fs \\
                         --severity HIGH,CRITICAL \\
                         --ignore-unfixed \\
                         --exit-code 0 \\
-                        /workspace/apps/bank_portal/
+                        apps/bank_portal/
                 '''
             }
         }
@@ -39,8 +42,8 @@ pipeline {
         stage('Security Scan: Trivy Image') {
             steps {
                 sh '''
-                    # Scan container image for vulnerabilities via Docker
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image \\
+                    # Scan container image
+                    ./trivy image \\
                         --severity HIGH,CRITICAL \\
                         --ignore-unfixed \\
                         --exit-code 0 \\
