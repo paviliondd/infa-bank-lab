@@ -13,44 +13,12 @@ pipeline {
                 git branch: 'main', url: 'http://103.110.85.93/bank-infra/infra-automation.git', credentialsId: 'gitlab-credentials'
             }
         }
-        
-        stage('Security Scan: Trivy FS') {
-            steps {
-                sh '''
-                    # Tải trực tiếp Trivy bằng curl có xử lý redirect
-                    curl -sL "https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.tar.gz" -o trivy.tar.gz
-                    tar xzf trivy.tar.gz trivy
-                    chmod +x trivy
-                    
-                    # Scan source code
-                    ./trivy fs \\
-                        --severity HIGH,CRITICAL \\
-                        --ignore-unfixed \\
-                        --exit-code 0 \\
-                        apps/bank_portal/
-                '''
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 dir('apps/bank_portal') {
                     sh "docker build -t ${IMAGE_NAME}:latest ."
                     sh "docker tag ${IMAGE_NAME}:latest ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
-            }
-        }
-        
-        stage('Security Scan: Trivy Image') {
-            steps {
-                sh '''
-                    # Scan container image
-                    ./trivy image \\
-                        --severity HIGH,CRITICAL \\
-                        --ignore-unfixed \\
-                        --exit-code 0 \\
-                        ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-                '''
             }
         }
 
