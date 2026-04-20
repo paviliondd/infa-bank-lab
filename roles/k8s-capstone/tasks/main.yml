@@ -1,12 +1,17 @@
 ---
+- name: Copy K8s manifests to master node
+  copy:
+    src: "{{ role_path }}/files/k8s/"
+    dest: "/tmp/capstone-k8s/"
+
 - name: Ensure banking-prod namespace exists
-  command: kubectl apply -f {{ role_path }}/files/k8s/namespace.yaml
+  command: kubectl apply -f /tmp/capstone-k8s/namespace.yaml
 
 - name: Deploy Bank Portal Application
-  command: kubectl apply -f {{ role_path }}/files/k8s/deployment.yaml
+  command: kubectl apply -f /tmp/capstone-k8s/deployment.yaml
 
 - name: Deploy Bank Portal Service & Ingress
-  command: kubectl apply -f {{ role_path }}/files/k8s/service-ingress.yaml
+  command: kubectl apply -f /tmp/capstone-k8s/service-ingress.yaml
 
 - name: Deploy Bank Portal ServiceMonitor (Prometheus)
-  command: kubectl apply -f {{ role_path }}/files/k8s/monitoring.yaml
+  command: kubectl apply -f /tmp/capstone-k8s/monitoring.yaml
