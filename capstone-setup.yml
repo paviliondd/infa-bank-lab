@@ -1,9 +1,6 @@
 ---
 - name: "Lab 5.1 Capstone: Deploy Banking System"
-  hosts: master
+  hosts: masters
   become: yes
-  vars_files:
-    - environment/prod/group_vars/all.yml
-    - environment/prod/group_vars/vault.yml
   roles:
     - k8s-capstone
