@@ -256,7 +256,9 @@ trivy-iac:
         --severity HIGH,CRITICAL \
         --skip-dirs apps/aiops/aiops_service \
         --skip-dirs apps/aiops/model \
-        --skip-dirs apps/aiops/data_collection
+        --skip-dirs apps/aiops/data_collection \
+        --skip-dirs apps/capacity_planner/capacity_trainer \
+        --skip-dirs apps/capacity_planner/capacity_service
   allow_failure: true
   rules:
     - changes:
@@ -295,3 +297,22 @@ deploy:aiops-staging:
       when: manual
     - when: never
 
+# ─────────────── LAB 4.2: Capacity Planning DEPLOY ───────────────
+deploy:capacity-staging:
+  stage: deploy-staging
+  when: manual
+  environment:
+    name: staging/capacity
+  script:
+    - echo "Lab 4.2 - Capacity Planning Deploy - Pipeline ${CI_PIPELINE_ID}"
+    - ansible-playbook capacity-setup.yml
+        --inventory inventories/staging/servers.yml
+        --diff
+    - echo "Capacity Planning deploy complete — https://capacity.linuxunity.com"
+  rules:
+    - changes:
+        - "roles/k8s-capacity-planner/**"
+        - "capacity-setup.yml"
+        - "apps/capacity_planner/**"
+      when: manual
+    - when: never

@@ -1,0 +1,14 @@
+---
+# capacity-setup.yml — Lab 4.2: Deploy Capacity Planning Service
+#
+# Cách dùng:
+#   ansible-playbook capacity-setup.yml --inventory inventories/staging/servers.yml
+#
+- name: Deploy Capacity Planning Service (Lab 4.2)
+  hosts: dmz
+  become: true
+  vars:
+    nexus_registry: "nexus.linuxunity.com"
+    capacity_namespace: "monitoring"
+  roles:
+    - k8s-capacity-planner

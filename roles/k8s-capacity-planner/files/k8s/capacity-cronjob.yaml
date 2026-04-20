@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: capacity-trainer
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+spec:
+  schedule: "0 3 * * *" # 3AM hàng ngày
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: capacity-planner
+            component: trainer
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: capacity-trainer
+            image: nexus.linuxunity.com/bank-registry/capacity-trainer:latest
+            imagePullPolicy: Always
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - ALL
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "1"
+            env:
+            - name: PROMETHEUS_URL
+              value: "http://bank-monitoring-kube-prome-prometheus.monitoring.svc.cluster.local:9090"
+            - name: MODEL_DIR
+              value: "/model/capacity"
+            volumeMounts:
+            - name: model-storage
+              mountPath: /model
+          restartPolicy: OnFailure
+          volumes:
+          - name: model-storage
+            persistentVolumeClaim:
+              claimName: capacity-model-pvc

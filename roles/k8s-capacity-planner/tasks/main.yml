@@ -1,0 +1,38 @@
+---
+- name: Tạo thư mục chứa capacity manifests trên Master Node
+  file:
+    path: /tmp/capacity-manifests
+    state: directory
+    mode: '0755'
+
+- name: Copy K8s manifests lên Master Node
+  copy:
+    src: "{{ item }}"
+    dest: "/tmp/capacity-manifests/{{ item | basename }}"
+  with_fileglob:
+    - "k8s/*.yaml"
+
+- name: Apply PVC (NFS shared storage cho forecast model)
+  command: kubectl apply -f /tmp/capacity-manifests/capacity-pvc.yaml -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply CronJob (Prophet daily forecasting)
+  command: kubectl apply -f /tmp/capacity-manifests/capacity-cronjob.yaml -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply Deployment (FastAPI Grafana API)
+  command: kubectl apply -f /tmp/capacity-manifests/capacity-deployment.yaml -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply Service + Ingress
+  command: kubectl apply -f /tmp/capacity-manifests/service-ingress.yaml -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply Monitoring Rules
+  command: kubectl apply -f /tmp/capacity-manifests/monitoring-rules.yaml -n monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

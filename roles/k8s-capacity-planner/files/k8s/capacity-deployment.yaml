@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capacity-service
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+    component: api-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: capacity-planner
+      component: api-service
+  template:
+    metadata:
+      labels:
+        app: capacity-planner
+        component: api-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: capacity-service
+        image: nexus.linuxunity.com/bank-registry/capacity-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+        env:
+        - name: MODEL_DIR
+          value: "/model/capacity"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-storage
+          mountPath: /model
+          readOnly: true
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: capacity-model-pvc
+          readOnly: true

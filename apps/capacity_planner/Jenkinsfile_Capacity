@@ -1,0 +1,53 @@
+pipeline {
+    agent any
+    environment {
+        NEXUS_REGISTRY = 'nexus.linuxunity.com/bank-registry'
+        TRAINER_IMAGE = "${NEXUS_REGISTRY}/capacity-trainer"
+        SERVICE_IMAGE = "${NEXUS_REGISTRY}/capacity-service"
+        IMAGE_TAG = "latest"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build Trainer Image') {
+                    steps {
+                        dir('apps/capacity_planner') {
+                            sh "docker build -f Dockerfile.trainer -t ${TRAINER_IMAGE}:${IMAGE_TAG} -t ${TRAINER_IMAGE}:${BUILD_NUMBER} ."
+                        }
+                    }
+                }
+                stage('Build Service Image') {
+                    steps {
+                        dir('apps/capacity_planner') {
+                            sh "docker build -f Dockerfile.service -t ${SERVICE_IMAGE}:${IMAGE_TAG} -t ${SERVICE_IMAGE}:${BUILD_NUMBER} ."
+                        }
+                    }
+                }
+            }
+        }
+        stage('Push to Nexus Registry') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'nexus-docker-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    sh """
+                    echo ${NEXUS_PASS} | docker login nexus.linuxunity.com -u ${NEXUS_USER} --password-stdin
+                    docker push ${TRAINER_IMAGE}:${BUILD_NUMBER}
+                    docker push ${TRAINER_IMAGE}:${IMAGE_TAG}
+                    docker push ${SERVICE_IMAGE}:${BUILD_NUMBER}
+                    docker push ${SERVICE_IMAGE}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            sh "docker logout nexus.linuxunity.com || true"
+        }
+    }
+}

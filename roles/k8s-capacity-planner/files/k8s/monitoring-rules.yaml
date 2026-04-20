@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: capacity-service-monitor
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+spec:
+  selector:
+    matchLabels:
+      app: capacity-planner
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: capacity-planner-alerts
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+spec:
+  groups:
+    - name: capacity.alerts
+      rules:
+        - alert: ServerDiskBreachCritical
+          expr: capacity_days_until_breach < 7
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "🔴 Server sẽ hết tài nguyên trong {{ $value }} ngày!"
+            description: "Dự báo Prophet phát hiện tài nguyên (CPU) sẽ đạt ngưỡng 90% trong {{ $value }} ngày. Hành động ngay!"
+        - alert: ServerDiskBreachWarning
+          expr: capacity_days_until_breach >= 7 and capacity_days_until_breach < 30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "⚠️ Cảnh báo: Server sẽ hết tài nguyên trong {{ $value }} ngày"
+            description: "Dự báo Prophet phát hiện tài nguyên (CPU) sẽ đạt ngưỡng 90% trong {{ $value }} ngày."

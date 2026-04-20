@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: capacity-service
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+    component: api-service
+spec:
+  type: ClusterIP
+  selector:
+    app: capacity-planner
+    component: api-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: capacity-ingress
+  namespace: monitoring
+  labels:
+    app: capacity-planner
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - capacity.linuxunity.com
+      secretName: capacity-tls-secret
+  rules:
+    - host: capacity.linuxunity.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: capacity-service
+                port:
+                  number: 8000
