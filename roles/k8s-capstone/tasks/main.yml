@@ -1,20 +1,12 @@
 ---
 - name: Ensure banking-prod namespace exists
-  kubernetes.core.k8s:
-    state: present
-    src: "{{ role_path }}/files/k8s/namespace.yaml"
+  command: kubectl apply -f {{ role_path }}/files/k8s/namespace.yaml
 
 - name: Deploy Bank Portal Application
-  kubernetes.core.k8s:
-    state: present
-    src: "{{ role_path }}/files/k8s/deployment.yaml"
+  command: kubectl apply -f {{ role_path }}/files/k8s/deployment.yaml
 
 - name: Deploy Bank Portal Service & Ingress
-  kubernetes.core.k8s:
-    state: present
-    src: "{{ role_path }}/files/k8s/service-ingress.yaml"
+  command: kubectl apply -f {{ role_path }}/files/k8s/service-ingress.yaml
 
 - name: Deploy Bank Portal ServiceMonitor (Prometheus)
-  kubernetes.core.k8s:
-    state: present
-    src: "{{ role_path }}/files/k8s/monitoring.yaml"
+  command: kubectl apply -f {{ role_path }}/files/k8s/monitoring.yaml
