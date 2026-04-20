@@ -17,8 +17,8 @@ pipeline {
         stage('Security Scan: Trivy FS') {
             steps {
                 sh '''
-                    # Download Trivy binary to avoid Docker Volume issues in Jenkins
-                    wget -qO- https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.tar.gz | tar xz trivy
+                    # Download Trivy using the official script to handle Github redirects
+                    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b . v0.50.1
                     
                     # Scan source code
                     ./trivy fs \\
