@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_REGISTRY = 'nexus.linuxunity.com/bank-registry'
         IMAGE_NAME = "bank-portal"
-        DOCKER_CRED = 'nexus-docker-cred'
+        DOCKER_CRED = 'nexus-docker-credentials'
     }
 
     stages {
