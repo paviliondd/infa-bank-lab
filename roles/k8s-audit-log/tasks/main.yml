@@ -1,0 +1,95 @@
+---
+- name: Đảm bảo thư viện python3-yaml được cài đặt cho công cụ YAML Parser
+  apt:
+    name: python3-yaml
+    state: present
+
+- name: Ghi tệp chính sách mức độ log (Audit Policy)
+  copy:
+    dest: /etc/kubernetes/audit-policy.yaml
+    content: |
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+      - level: Metadata
+        resources:
+        - group: ""
+          resources: ["secrets", "pods"]
+      - level: RequestResponse
+        resources:
+        - group: ""
+          resources: ["services"]
+      - level: None
+        users: ["system:kube-proxy"]
+        verbs: ["watch"]
+      - level: Request
+
+- name: Tạo thư mục lưu trữ log an toàn trên Master Node
+  file:
+    path: /var/log/kubernetes/audit
+    state: directory
+    mode: '0755'
+
+- name: Tạo script Python để can thiệp an toàn vào Core kube-apiserver.yaml
+  copy:
+    dest: /tmp/patch_apiserver.py
+    content: |
+      import yaml
+
+      with open('/etc/kubernetes/manifests/kube-apiserver.yaml', 'r') as f:
+          data = yaml.safe_load(f)
+
+      container = data['spec']['containers'][0]
+
+      cmds = container['command']
+      new_flags = [
+          '--audit-policy-file=/etc/kubernetes/audit-policy.yaml',
+          '--audit-log-path=/var/log/kubernetes/audit/audit.log',
+          '--audit-log-maxage=30',
+          '--audit-log-maxbackup=10',
+          '--audit-log-maxsize=100'
+      ]
+      for flag in new_flags:
+          if not any(flag.split('=')[0] in cmd for cmd in cmds):
+              cmds.append(flag)
+
+      vmounts = container.get('volumeMounts', [])
+      vmounts_names = [v['name'] for v in vmounts]
+      if 'audit-policy' not in vmounts_names:
+          vmounts.append({'name': 'audit-policy', 'mountPath': '/etc/kubernetes/audit-policy.yaml', 'readOnly': True})
+      if 'audit-logs' not in vmounts_names:
+          vmounts.append({'name': 'audit-logs', 'mountPath': '/var/log/kubernetes/audit', 'readOnly': False})
+      container['volumeMounts'] = vmounts
+
+      volumes = data['spec'].get('volumes', [])
+      vol_names = [v['name'] for v in volumes]
+      if 'audit-policy' not in vol_names:
+          volumes.append({'name': 'audit-policy', 'hostPath': {'path': '/etc/kubernetes/audit-policy.yaml', 'type': 'File'}})
+      if 'audit-logs' not in vol_names:
+          volumes.append({'name': 'audit-logs', 'hostPath': {'path': '/var/log/kubernetes/audit', 'type': 'DirectoryOrCreate'}})
+      data['spec']['volumes'] = volumes
+
+      with open('/etc/kubernetes/manifests/kube-apiserver.yaml', 'w') as f:
+          yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+      print("SUCCESS")
+
+- name: Thực thi chèn Log Param vào API Server trực tiếp (Sẽ làm K8s khởi động lại API)
+  command: python3 /tmp/patch_apiserver.py
+  register: patch_result
+  changed_when: "'SUCCESS' in patch_result.stdout"
+
+- name: Khởi động lại Kubelet để tái nạp API Server
+  systemd:
+    name: kubelet
+    state: restarted
+
+- name: Chờ API Server sống lại (Mất khoảng 20-40 giây)
+  command: kubectl get --raw /healthz
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: api_health
+  until: api_health.rc == 0
+  retries: 15
+  delay: 4
+  ignore_errors: true

@@ -1,0 +1,88 @@
+---
+- name: Bước 1 - Thiết lập Server chia sẻ lưu trữ tập trung (Cài lên VPS1)
+  hosts: vps1
+  become: yes
+  roles:
+    - nfs-server
+
+- name: Bước 2 - Phổ cập nfs-common cho toàn mạng lưới K8s Nodes
+  hosts: "vps3,vps4,vps5"
+  become: yes
+  roles:
+    - nfs-client
+
+- name: Bước 3 - Triển khai Hệ thống Cấp phát Tự động (NFS Storage Provisioner)
+  hosts: vps3
+  become: yes
+  roles:
+    - nfs-provisioner
+
+- name: Bước 4 - Chạy thử nghiệm PVC và Pod gắn Storage (Trực tiếp trên Master)
+  hosts: vps3
+  become: yes
+  tasks:
+    - name: Tạo file mẫu yêu cầu cắt ổ cứng (test-pvc.yaml)
+      copy:
+        dest: /root/test-pvc.yaml
+        content: |
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: test-claim
+          spec:
+            storageClassName: nfs-client
+            accessModes:
+              - ReadWriteMany
+            resources:
+              requests:
+                storage: 1Gi
+                
+    - name: Apply PVC vào Kubernetes
+      command: kubectl apply -f /root/test-pvc.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+        
+    - name: Tạo Pod ghi dữ liệu Test (test-pod.yaml)
+      copy:
+        dest: /root/test-pod.yaml
+        content: |
+          kind: Pod
+          apiVersion: v1
+          metadata:
+            name: test-pod
+          spec:
+            containers:
+            - name: test-pod
+              image: busybox:1.28
+              command:
+                - "/bin/sh"
+              args:
+                - "-c"
+                - "touch /mnt/SUCCESS_K8S_NFS && echo 'Hoan tat' && exit 0"
+              volumeMounts:
+                - name: nfs-pvc
+                  mountPath: "/mnt"
+            restartPolicy: "Never"
+            volumes:
+              - name: nfs-pvc
+                persistentVolumeClaim:
+                  claimName: test-claim
+                  
+    - name: Apply Pod vào cụm mạng
+      command: kubectl apply -f /root/test-pod.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+        
+    - name: Chờ hệ thống cung cấp ổ đĩa và ghi file (Khoảng 20s)
+      pause:
+        seconds: 20
+        
+    - name: Nhận báo cáo trạng thái kiểm tra (Validation)
+      command: kubectl get pods test-pod
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: pod_status
+      
+    - name: Hiển thị trạng thái thành công
+      debug:
+        msg: "Quá trình Test: {{ pod_status.stdout_lines[1] }}"

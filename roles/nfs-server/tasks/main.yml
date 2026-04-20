@@ -1,0 +1,32 @@
+---
+- name: Cài đặt nfs-kernel-server
+  apt:
+    name: nfs-kernel-server
+    state: present
+    update_cache: yes
+
+- name: Tạo thư mục chia sẻ (NFS Export directory)
+  file:
+    path: /srv/nfs/kubedata
+    state: directory
+    mode: '0777'
+    owner: nobody
+    group: nogroup
+
+- name: Cấu hình /etc/exports
+  lineinfile:
+    path: /etc/exports
+    line: '/srv/nfs/kubedata *(rw,sync,no_subtree_check,no_root_squash)'
+    state: present
+  register: exports_config
+
+- name: Khởi động và Enable NFS Server
+  systemd:
+    name: nfs-kernel-server
+    state: restarted
+    enabled: yes
+  when: exports_config.changed
+
+- name: Áp dụng thay đổi cấu hình exports ngay lập tức
+  command: exportfs -ra
+  when: exports_config.changed

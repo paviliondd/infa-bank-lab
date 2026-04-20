@@ -1,0 +1,37 @@
+---
+- name: Kiểm tra sự tồn tại của Helm
+  command: helm version
+  register: helm_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Tải xuống script cài đặt Helm
+  get_url:
+    url: https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    dest: /tmp/get_helm.sh
+    mode: '0700'
+  when: helm_check.rc != 0
+
+- name: Thực thi cài đặt Helm
+  command: /tmp/get_helm.sh
+  when: helm_check.rc != 0
+
+- name: Thêm Repository của NFS Subdir External Provisioner vào Helm
+  command: helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Cập nhật chỉ mục Helm Repo
+  command: helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Cài đặt NFS Provisioner thông qua Helm Chart
+  command: >
+    helm upgrade --install nfs-client nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+    --set nfs.server=103.110.85.93
+    --set nfs.path=/srv/nfs/kubedata
+    --set storageClass.name=nfs-client
+    --set storageClass.defaultClass=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

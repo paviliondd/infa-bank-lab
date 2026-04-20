@@ -1,0 +1,107 @@
+---
+- name: Di cư Nexus vào lõi Kubernetes (Nexus-as-a-Pod)
+  hosts: vps5
+  become: yes
+  tasks:
+    - name: Xoá bỏ Container Docker rác cũ (Gây xung đột mạng)
+      command: docker rm -f nexus
+      ignore_errors: yes
+
+    - name: Dọn dẹp quyền thư mục để Nexus Pod có thể ghi dữ liệu
+      shell: mkdir -p /opt/nexus-data && chown -R 200:200 /opt/nexus-data
+
+- name: Triển khai Cụm Nexus Native trên K8s
+  hosts: vps3
+  become: yes
+  tasks:
+    - name: Tạo file Cấu hình Triển khai Nexus
+      copy:
+        dest: /root/nexus-k8s.yaml
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: nexus
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: nexus
+            template:
+              metadata:
+                labels:
+                  app: nexus
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: k8s-worker2
+                containers:
+                  - name: nexus
+                    image: sonatype/nexus3:3.66.0
+                    ports:
+                      - containerPort: 8081
+                      - containerPort: 5000
+                    resources:
+                      requests:
+                        memory: "2Gi"
+                        cpu: "1000m"
+                    volumeMounts:
+                      - name: nexus-data
+                        mountPath: /nexus-data
+                volumes:
+                  - name: nexus-data
+                    hostPath:
+                      path: /opt/nexus-data
+                      type: DirectoryOrCreate
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: nexus
+            namespace: default
+          spec:
+            selector:
+              app: nexus
+            ports:
+              - name: web
+                port: 8081
+                targetPort: 8081
+              - name: docker
+                port: 5000
+                targetPort: 5000
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: nexus-ingress
+            namespace: default
+            annotations:
+              cert-manager.io/cluster-issuer: "letsencrypt-prod"
+              nginx.ingress.kubernetes.io/proxy-body-size: "1000m" 
+          spec:
+            ingressClassName: nginx
+            tls:
+              - hosts:
+                  - nexus.linuxunity.com
+                secretName: nexus-tls-secret
+            rules:
+              - host: nexus.linuxunity.com
+                http:
+                  paths:
+                    - path: /v2
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: nexus
+                          port:
+                            number: 5000
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: nexus
+                          port:
+                            number: 8081
+
+    - name: Khởi chạy Cấu hình Deployment
+      command: kubectl apply -f /root/nexus-k8s.yaml

@@ -1,0 +1,6 @@
+---
+- name: Deploy HashiCorp Vault Production
+  hosts: vps2
+  become: yes
+  roles:
+    - vault-docker

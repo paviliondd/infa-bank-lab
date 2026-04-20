@@ -1,0 +1,169 @@
+---
+- name: Tắt Swap (yêu cầu của kubelet)
+  command: swapoff -a
+  changed_when: false
+
+- name: Vô hiệu hóa phân vùng swap trong /etc/fstab vĩnh viễn
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+
+- name: Load kernel modules cần thiết cho containerd và k8s
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Load overlay module
+  modprobe:
+    name: overlay
+    state: present
+
+- name: Load br_netfilter module
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Cấu hình sysctl cho k8s
+  copy:
+    dest: /etc/sysctl.d/k8s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+
+- name: Áp dụng sysctl without reboot
+  command: sysctl --system
+  changed_when: false
+
+- name: Trị dứt điểm lỗi Conflicting Signed-By và NO_PUBKEY từ repo cũ của Docker
+  shell: grep -rl 'download.docker.com' /etc/apt/ | grep ".list$\|.sources$" | xargs -r rm -f
+  changed_when: false
+  ignore_errors: true
+
+- name: Cài đặt các gói phụ thuộc cần thiết
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: yes
+
+- name: Thiết lập thư mục chứa apt keyrings nếu chưa có
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Thêm Docker GPG key (cho containerd)
+  shell: |
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+
+
+
+- name: Thêm repo Docker (containerd.io)
+  apt_repository:
+    repo: "deb [arch={{ dpkg_architecture.stdout | default('amd64') }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker-ce
+    update_cache: yes
+
+- name: Cài đặt containerd.io
+  apt:
+    name: containerd.io
+    state: present
+    update_cache: yes
+
+- name: Tạo cấu hình mặc định cho containerd (Ghi đè cấu hình cũ)
+  shell: |
+    mkdir -p /etc/containerd
+    containerd config default > /etc/containerd/config.toml
+  changed_when: false
+
+- name: Đảm bảo plugin CRI không bị vô hiệu hóa trong containerd
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: '^\s*disabled_plugins\s*=\s*\["cri"\]'
+    replace: '#disabled_plugins = ["cri"]'
+
+- name: Bật SystemdCgroup trong containerd
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: Restart và Enable containerd ngay lập tức (Bắt buộc trước khi init)
+  systemd:
+    name: containerd
+    state: restarted
+    enabled: yes
+    daemon_reload: yes
+
+- name: Đảm bảo công cụ iptables-persistent được cài đặt
+  apt:
+    name: iptables-persistent
+    state: present
+    update_cache: yes
+  ignore_errors: true
+
+- name: Mở tường lửa (iptables) nội bộ cho cụm
+  iptables:
+    chain: INPUT
+    source: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - 116.118.50.73
+    - 116.118.51.79
+    - 103.110.85.124
+  ignore_errors: true
+
+- name: Lưu cấu hình tường lửa vĩnh viễn (Chống rớt node sau khi khởi động lại)
+  shell: netfilter-persistent save || iptables-save > /etc/iptables/rules.v4
+  changed_when: false
+  ignore_errors: true
+
+- name: Thêm toàn bộ các host vào /etc/hosts để Kubelet các node không bị lỗi phân giải tên miền
+  blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} K8S CLUSTER HOSTS"
+    block: |
+      116.118.50.73 k8s-master
+      116.118.51.79 k8s-worker1
+      103.110.85.124 k8s-worker2
+
+- name: Tải Kubernetes APT key (Sử dụng pkgs.k8s.io mới)
+  shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Thêm repo Kubernetes (cho v1.30)
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+    state: present
+    filename: kubernetes
+
+- name: Cài đặt kubeadm, kubelet, kubectl (phiên bản v1.30.2)
+  apt:
+    name:
+      - kubeadm=1.30.2-1.1
+      - kubelet=1.30.2-1.1
+      - kubectl=1.30.2-1.1
+    state: present
+    update_cache: yes
+    allow_downgrade: yes
+
+- name: Hold các gói không cho tự động cập nhật
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl

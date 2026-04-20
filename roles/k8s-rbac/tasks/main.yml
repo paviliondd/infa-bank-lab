@@ -1,0 +1,69 @@
+---
+- name: Khởi tạo tệp YAML cấu hình Namespaces & Quyền hạn RBAC
+  copy:
+    dest: /root/rbac-setup.yaml
+    content: |
+      ---
+      # 1. Namespaces Cơ Bản
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: dev
+      ---
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: staging
+      ---
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: prod
+      ---
+      # 2. Tạo User Tượng Trưng (ServiceAccount)
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: dev-user
+        namespace: dev
+      ---
+      # 3. Yêu Cầu Token cho ServiceAccount (Phiên bản K8s 1.24+ yêu cầu điều này)
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: dev-user-token
+        namespace: dev
+        annotations:
+          kubernetes.io/service-account.name: dev-user
+      type: kubernetes.io/service-account-token
+      ---
+      # 4. Định nghĩa chức danh (Role) - Toàn quyền thao tác TẤT CẢ TÀI NGUYÊN trong Namespace dev
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        namespace: dev
+        name: developer-role
+      rules:
+      - apiGroups: ["", "extensions", "apps", "batch"]
+        resources: ["*"]
+        verbs: ["*"]
+      ---
+      # 5. Phân Quyền (RoleBinding): Khóa User vào Chức danh
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: dev-user-binding
+        namespace: dev
+      subjects:
+      - kind: ServiceAccount
+        name: dev-user
+        namespace: dev
+      roleRef:
+        kind: Role
+        name: developer-role
+        apiGroup: rbac.authorization.k8s.io
+
+- name: Apply cấu hình RBAC & Namespace vào Cụm K8s
+  command: kubectl apply -f /root/rbac-setup.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

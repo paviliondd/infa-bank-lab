@@ -1,0 +1,77 @@
+---
+- name: Tạo file biên dịch ứng dụng NGINX Banking App
+  copy:
+    dest: /root/banking-app.yaml
+    content: |
+      ---
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: banking-prod
+      ---
+      # 1. Ứng dụng Backend Web
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: banking-web
+        namespace: banking-prod
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: banking-web
+        template:
+          metadata:
+            labels:
+              app: banking-web
+          spec:
+            containers:
+            - name: web
+              image: nginxdemos/hello:plain-text
+              ports:
+              - containerPort: 80
+      ---
+      # 2. Service nội bộ trong cụm
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: banking-svc
+        namespace: banking-prod
+      spec:
+        type: ClusterIP
+        selector:
+          app: banking-web
+        ports:
+        - port: 80
+          targetPort: 80
+      ---
+      # 3. Trỏ bảng chỉ đường Ingress HTTP/HTTPS
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: banking-ingress
+        namespace: banking-prod
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod" # Chuyển sang Let's Encrypt Thật
+      spec:
+        ingressClassName: nginx
+        tls:
+        - hosts:
+          - lab.linuxunity.com
+          secretName: banking-tls-secret # Tên ổ khoá TLS K8s sẽ tự cắt ra
+        rules:
+        - host: lab.linuxunity.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: banking-svc
+                  port:
+                    number: 80
+
+- name: Đẩy khối mã Ứng dụng Banking vào Máy chủ K8s
+  command: kubectl apply -f /root/banking-app.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

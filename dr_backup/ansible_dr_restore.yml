@@ -1,0 +1,30 @@
+---
+- name: Playbook Disaster Recovery phục hồi Hạ tầng mạng
+  hosts: all
+  gather_facts: no
+  vars:
+    backup_dir: "backups/{{ inventory_hostname }}"
+
+  tasks:
+    - name: 1. Đẩy file định tuyến cũ vào Local temp của Container Mạng
+      ansible.builtin.copy:
+        src: "{{ backup_dir }}/frr_latest.conf"
+        dest: "/tmp/frr_latest.conf"
+        mode: '0644'
+      notify: Reload_FRR_Routing
+
+    - name: 2. Kéo file IPTables dự phòng lên Firewall
+      ansible.builtin.copy:
+        src: "{{ backup_dir }}/iptables_latest.rules"
+        dest: "/tmp/iptables_latest.rules"
+        mode: '0600'
+      when: "'fw' in inventory_hostname.lower()"
+      notify: Reload_IPTables_Filter
+
+  handlers:
+    - name: Reload_FRR_Routing
+      # Lệnh vtysh nhập nóng config đè luồng mạng đang trôi nổi
+      ansible.builtin.shell: vtysh -f /tmp/frr_latest.conf
+
+    - name: Reload_IPTables_Filter
+      ansible.builtin.shell: iptables-restore < /tmp/iptables_latest.rules

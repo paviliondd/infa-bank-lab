@@ -1,0 +1,34 @@
+---
+- name: Tự động hoá Backup Hạ tầng Mạng (FRR + Firewall)
+  hosts: all
+  gather_facts: no
+  vars:
+    # Ansible sẽ tự tải file về thư mục backups trên gitlab-runner
+    backup_dir: "backups/{{ inventory_hostname }}"
+
+  tasks:
+    - name: Khởi tạo Local Folder lưu trữ trên GitLab Server
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+      delegate_to: localhost
+
+    - name: 1. Trích xuất Cấu hình Định tuyến (FRR) từ Nodes
+      ansible.builtin.shell: vtysh -c 'show running-config' > /tmp/frr_latest.conf
+      
+    - name: 2. Trích xuất Cấu hình Firewall (IPTables) - Chỉ áp dụng cho Firewall
+      ansible.builtin.shell: iptables-save > /tmp/iptables_latest.rules
+      when: "'fw' in inventory_hostname.lower()"
+
+    - name: 3. Kéo (Fetch) file định tuyến về máy quản lý trung tâm
+      ansible.builtin.fetch:
+        src: /tmp/frr_latest.conf
+        dest: "{{ backup_dir }}/frr_latest.conf"
+        flat: yes
+
+    - name: 4. Kéo file IPTables về máy quản lý
+      ansible.builtin.fetch:
+        src: /tmp/iptables_latest.rules
+        dest: "{{ backup_dir }}/iptables_latest.rules"
+        flat: yes
+      when: "'fw' in inventory_hostname.lower()"

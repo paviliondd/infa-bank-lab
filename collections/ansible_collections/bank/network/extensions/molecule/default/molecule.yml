@@ -2,10 +2,19 @@
 dependency:
   name: galaxy
 driver:
-  name: delegated # Không dùng docker ảo hoá cả hệ điều hành mà chỉ giả lập lệnh
+  name: docker
 platforms:
   - name: mock_switch
+    image: ghcr.io/hellt/network-multitool:latest  # Image mô phỏng môi trường network
+    pre_build_image: true
+    command: /bin/bash
+    tty: true
 provisioner:
   name: ansible
+  inventory:
+    host_vars:
+      mock_switch:
+        ansible_network_os: "cisco.ios"          # Giả lập Cisco IOS
+        ansible_connection: "ansible.netcommon.network_cli"
 verifier:
   name: ansible

@@ -1,0 +1,12 @@
+---
+- name: Cài đặt gói nfs-common (NFS Client) bắt buộc cho kubelet
+  apt:
+    name: nfs-common
+    state: present
+    update_cache: yes
+
+- name: Đảm bảo rpcbind đang chạy
+  systemd:
+    name: rpcbind
+    state: started
+    enabled: yes

@@ -1,0 +1,8 @@
+---
+- name: Cài đặt Hệ thống Monitoring & Alerting Ngân hàng (AIOps Phase 1)
+  hosts: vps3
+  become: yes
+  vars:
+    slack_webhook_url: "https://hooks.slack.com/services/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"
+  roles:
+    - k8s-monitoring

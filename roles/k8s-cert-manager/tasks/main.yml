@@ -1,0 +1,47 @@
+---
+- name: Thêm Jetstack (Cert-Manager) vào Helm Repo
+  command: /usr/local/bin/helm repo add jetstack https://charts.jetstack.io
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Cập nhật Helm Repo Jetstack
+  command: /usr/local/bin/helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Cài đặt Cert-Manager v1.14.4 qua Helm kèm CRDs
+  command: >
+    /usr/local/bin/helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace cert-manager --create-namespace
+    --version v1.14.4
+    --set installCRDs=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Khởi tạo tệp YAML cấu hình Let's Encrypt ClusterIssuer
+  copy:
+    dest: /root/cluster-issuer.yaml
+    content: |
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: letsencrypt-prod
+      spec:
+        acme:
+          server: https://acme-v02.api.letsencrypt.org/directory
+          email: admin@linuxunity.com
+          privateKeySecretRef:
+            name: letsencrypt-prod-key
+          solvers:
+          - http01:
+              ingress:
+                class: nginx
+
+- name: Chờ Cert-Manager Webhook sẵn sàng (Khoảng 30-40s)
+  pause:
+    seconds: 40
+
+- name: Áp dụng Let's Encrypt Prod Issuer vào cụm K8s
+  command: kubectl apply -f /root/cluster-issuer.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

@@ -1,0 +1,20 @@
+---
+- name: Khởi chạy Cấu hình K8s Security (RBAC và Audit Logs)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Thông báo khởi chạy Playbook Lab 3.3
+      debug:
+        msg: "Bắt đầu Module Bảo mật - Triển khai RBAC và Bật Audit Log cho API Server"
+
+- name: Triển khai RBAC Namespaces & Hệ thống Phân quyền Group
+  hosts: "linux_servers:&dmz:!103.110.85.93"
+  become: yes
+  roles:
+    - k8s-rbac
+
+- name: Kích hoạt Bộ tuần tra giám sát hoạt động (Audit Logging) trên K8s Control Plane
+  hosts: "linux_servers:&dmz:!103.110.85.93"
+  become: yes
+  roles:
+    - k8s-audit-log

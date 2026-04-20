@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"app_servers","Source":"../../modules/aws-ec2-golden","Dir":""},{"Key":"security_firewall","Source":"../../modules/aws-security","Dir":""},{"Key":"vpc_network","Source":"../../modules/aws-network","Dir":""}]}

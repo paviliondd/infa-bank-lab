@@ -1,0 +1,85 @@
+grafana:
+  nodeSelector:
+    kubernetes.io/hostname: k8s-worker1
+  adminPassword: "Banking@Alert123"
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    hosts:
+      - grafana.linuxunity.com
+    tls:
+      - secretName: grafana-tls-secret
+        hosts:
+          - grafana.linuxunity.com
+  grafana.ini:
+    server:
+      root_url: https://grafana.linuxunity.com
+
+alertmanager:
+  alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/hostname: k8s-worker1
+  config:
+    global:
+      slack_api_url: "{{ slack_webhook_url }}"
+    route:
+      group_by: ['namespace', 'alertname']
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 1h
+      receiver: 'slack-notifications'
+      routes:
+      - receiver: 'slack-notifications'
+        matchers:
+          - severity=~"critical|warning"
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - send_resolved: true
+        title: '{% raw %}[{{ .Status | toUpper }}] K8s Bank Cluster Alert{% endraw %}'
+        text: >-
+          {% raw %}{{ range .Alerts -}}
+          *🔥 THÔNG BÁO KHẨN: CẢNH BÁO HỆ THỐNG 🔥*
+          *Tên Bệnh:* `{{ .Labels.alertname }}`
+          *Mức Độ:* `{{ .Labels.severity }}`
+          *Vị Trí:* `{{ .Labels.instance }}`
+          *Chi Tiết:* {{ .Annotations.description }}
+          *Trạng Thái Lõi:* `{{ .Status }}`
+          ------------------------------------------
+          {{ end }}{% endraw %}
+
+prometheusOperator:
+  nodeSelector:
+    kubernetes.io/hostname: k8s-worker1
+
+kubeStateMetrics:
+  nodeSelector:
+    kubernetes.io/hostname: k8s-worker1
+
+prometheus:
+  prometheusSpec:
+    nodeSelector:
+      kubernetes.io/hostname: k8s-worker1
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    additionalScrapeConfigs:
+      - job_name: 'bank-network-switches'
+        static_configs:
+          - targets:
+            - 172.20.20.11
+            - 172.20.20.12
+            - 172.20.20.13
+        metrics_path: /snmp
+        params:
+          module: [if_mib]
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: snmp-exporter-prometheus-snmp-exporter.monitoring.svc.cluster.local:9116

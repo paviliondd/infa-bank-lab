@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./config:/vault/config:rw
+      - ./file:/vault/file:rw
+      - ./logs:/vault/logs:rw
+    cap_add:
+      - IPC_LOCK
+    entrypoint: vault server -config=/vault/config/vault.hcl
+    restart: unless-stopped

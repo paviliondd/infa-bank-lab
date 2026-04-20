@@ -1,0 +1,26 @@
+---
+- name: Khởi tạo module K8s Ingress & Ứng dụng Banking (Lab 3.4)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Thông báo khởi chạy Playbook Lab 3.4
+      debug:
+        msg: "Bắt đầu Triển khai Cổng Ingress, HTTPS (Cert-Manager) và Ứng dụng Banking Mẫu."
+
+- name: Bước 1 - Cài đặt NGINX Ingress Controller dạng Bare-Metal
+  hosts: "linux_servers:&dmz:!103.110.85.93"
+  become: yes
+  roles:
+    - k8s-ingress
+
+- name: Bước 2 - Thiết lập Cỗ máy cấp chứng chỉ SSL (Cert-Manager)
+  hosts: "linux_servers:&dmz:!103.110.85.93"
+  become: yes
+  roles:
+    - k8s-cert-manager
+
+- name: Bước 3 - Khởi chạy Ứng dụng Banking (Domain lab.linuxunity.com)
+  hosts: "linux_servers:&dmz:!103.110.85.93"
+  become: yes
+  roles:
+    - k8s-banking-app

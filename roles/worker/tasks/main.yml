@@ -1,0 +1,13 @@
+---
+- name: Lấy join command từ biến fact lưu của nhóm dmz (K8s Master)
+  set_fact:
+    join_cmd: "{{ hostvars[groups['dmz'][0]]['join_command'] }}"
+
+- name: Kiểm tra trạng thái node đã join chưa (có kubelet.conf hay chưa)
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: worker_joined
+
+- name: Tham gia Worker vào Cluster
+  command: "{{ join_cmd }}"
+  when: not worker_joined.stat.exists

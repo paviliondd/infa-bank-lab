@@ -1,0 +1,29 @@
+---
+- name: Tạo Namespace monitoring
+  command: kubectl create ns monitoring
+  ignore_errors: yes
+
+- name: Cài đặt Repo Prometheus Community
+  command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stdout"
+
+- name: Cập nhật Helm Repos
+  command: helm repo update
+
+- name: Đổ cấu hình Prometheus-Grafana-Alertmanager
+  template:
+    src: prometheus-values.yaml.j2
+    dest: /root/prometheus-values.yaml
+
+- name: Deploy toàn bộ Monitoring Stack
+  command: >
+    helm upgrade --install bank-monitoring prometheus-community/kube-prometheus-stack
+    -n monitoring
+    -f /root/prometheus-values.yaml
+
+- name: Deploy SNMP Exporter để hút data Network (VPS 6)
+  command: >
+    helm upgrade --install snmp-exporter prometheus-community/prometheus-snmp-exporter
+    -n monitoring
+    --set nodeSelector."kubernetes\.io/hostname"=k8s-worker1

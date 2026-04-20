@@ -1,0 +1,18 @@
+---
+- name: Chuẩn bị cài đặt chung cho tất cả các node K8s
+  hosts: linux_servers
+  become: yes
+  roles:
+    - common
+
+- name: Khởi tạo Kubernetes Master
+  hosts: dmz
+  become: yes
+  roles:
+    - master
+
+- name: Gia nhập các Workers vào Cluster
+  hosts: internal
+  become: yes
+  roles:
+    - worker

@@ -1,0 +1,37 @@
+---
+- name: Kiểm tra trạng thái Cluster
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeconfig
+
+- name: Khởi tạo Kubernetes Cluster với kubeadm
+  command: |
+    kubeadm init --pod-network-cidr=192.168.0.0/16
+  when: not kubeconfig.stat.exists
+  register: kubeadm_init
+
+- name: Tạo thư mục .kube cho user hiện hành
+  file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    mode: '0755'
+
+- name: Copy admin.conf để dùng kubectl
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: yes
+    mode: '0600'
+
+- name: Cài đặt Calico CNI
+  command: |
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+  when: kubeadm_init is changed
+
+- name: Tạo Join Command (Dùng token 24 giờ)
+  command: kubeadm token create --print-join-command
+  register: join_command_raw
+
+- name: Thiết lập biến thực để đẩy xuống các Workers
+  set_fact:
+    join_command: "{{ join_command_raw.stdout_lines[0] }}"

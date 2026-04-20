@@ -1,0 +1,34 @@
+---
+- name: Cài đặt thư mục Vault
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/vault
+    - /opt/vault/config
+    - /opt/vault/file
+    - /opt/vault/logs
+
+- name: Template file cấu hình vault.hcl
+  template:
+    src: vault.hcl.j2
+    dest: /opt/vault/config/vault.hcl
+    mode: '0644'
+
+- name: Template docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/vault/docker-compose.yml
+    mode: '0644'
+
+- name: Deploy Vault qua Docker Compose
+  command: docker compose up -d
+  args:
+    chdir: /opt/vault
+  register: vault_up
+  changed_when: vault_up.stdout | regex_search('Created|Started')
+
+- name: Chờ Vault khởi động tốn 5s
+  pause:
+    seconds: 5
