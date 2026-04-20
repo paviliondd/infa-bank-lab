@@ -17,13 +17,12 @@ pipeline {
         stage('Security Scan: Trivy FS') {
             steps {
                 sh '''
-                    # Scan source code for vulnerabilities before building
-                    # Ignore unfixed vulnerabilities, fail only on CRITICAL / HIGH that have fixes
-                    trivy fs \
-                        --severity HIGH,CRITICAL \
-                        --ignore-unfixed \
-                        --exit-code 0 \
-                        apps/bank_portal/
+                    # Run Trivy via Docker
+                    docker run --rm -v ${WORKSPACE}:/workspace aquasec/trivy fs \\
+                        --severity HIGH,CRITICAL \\
+                        --ignore-unfixed \\
+                        --exit-code 0 \\
+                        /workspace/apps/bank_portal/
                 '''
             }
         }
@@ -40,11 +39,11 @@ pipeline {
         stage('Security Scan: Trivy Image') {
             steps {
                 sh '''
-                    # Scan container image for vulnerabilities
-                    trivy image \
-                        --severity HIGH,CRITICAL \
-                        --ignore-unfixed \
-                        --exit-code 0 \
+                    # Scan container image for vulnerabilities via Docker
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image \\
+                        --severity HIGH,CRITICAL \\
+                        --ignore-unfixed \\
+                        --exit-code 0 \\
                         ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                 '''
             }
