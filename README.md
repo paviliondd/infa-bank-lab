@@ -435,11 +435,3 @@ containerlab destroy --topo topology.yml
 | Vault AppRole token expire giữa pipeline | Token TTL quá ngắn | Tăng TTL + refresh trong `vault.yml` task |
 
 ---
-
-## License
-
-MIT — See [LICENSE](LICENSE) for details.
-
----
-
-*Maintained by Bank Infrastructure Team · [bank-infra/infra-automation](http://gitlab.bank.local/bank-infra/infra-automation)*
